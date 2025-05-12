@@ -1,0 +1,35 @@
+# How to Run (Python 3.10^ required)
+# ------------------------------------
+# Type the ff:
+# 
+# 1.) python -m venv .venv
+# 2.) .venv\Scripts\activate
+# 3.) pip install -r requirements.txt
+# 4.) python test_cuda.py (Test if CUDA is working)
+# 5.) python main.py
+
+
+# Modules/Dependencies to run DocTR
+PyQt6
+wmi
+torch --index-url https://download.pytorch.org/whl/cu126
+torchvision --index-url https://download.pytorch.org/whl/cu126
+torchaudio --index-url https://download.pytorch.org/whl/cu126
+python-doctr[torch]
+python-doctr
+ocrmypdf
+PyPDF2
+Pillow
+opencv-python
+numpy
+psutil
+nvidia-ml-py3
+GPUtil
+python-magic-bin; platform_system == "Windows"
+python-magic; platform_system != "Windows"
+pdf2image
+img2pdf
+pdfminer.six
+tqdm
+colorama
+typing_extensions
