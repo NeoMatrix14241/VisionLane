@@ -14,7 +14,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - 📄 Support for multiple input formats (TIFF, JPEG, PNG, PDF)
 - 🔄 Concurrent processing with multi-threading
 - 💾 Output in PDF and HOCR formats
-- 🖥️ Modern PyQt6-based GUI interface
+- 🖥️ PyQt6-based GUI interface
 - 📊 Real-time processing status and GPU metrics
 - 🔍 High-accuracy text recognition using DocTR
 
