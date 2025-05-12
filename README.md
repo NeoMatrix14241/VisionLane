@@ -71,5 +71,3 @@ python main.py
 ### Output Formats:
 - Searchable PDFs
 - HOCR (HTML-based OCR) files
-
-## Project Structure
