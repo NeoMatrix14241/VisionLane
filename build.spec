@@ -1,51 +1,53 @@
-import sys
-from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+# -*- mode: python ; coding: utf-8 -*-
 
-block_cipher = None
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, get_package_paths
+
+# Custom hidden imports
+hiddenimports = [
+    'doctr',
+    'torch',
+    'torchvision',
+    'PIL',
+    'numpy',
+    'cv2',
+    'psutil',
+    'pynvml',
+    'GPUtil',
+    'PyPDF2',
+    'ocrmypdf',
+    'ocrmypdf.data',
+    'pdf2image'
+] + collect_submodules('ocrmypdf')
+
+# Collect package data
+datas = collect_data_files('ocrmypdf') + collect_data_files('doctr') + collect_data_files('torch')
+
+# Ensure pdf.ttf is included
+ocrmypdf_path = Path(get_package_paths('ocrmypdf')[0])
+pdf_ttf = ocrmypdf_path / 'data' / 'pdf.ttf'
+if pdf_ttf.exists():
+    datas.append(('ocrmypdf/data/pdf.ttf', str(pdf_ttf)))
+else:
+    print("Warning: pdf.ttf not found!")
 
 a = Analysis(
-    ['main.py'],
+    ['main.py'],  # Make sure your entry script is 'main.py'
     pathex=['.'],
     binaries=[],
-    datas=[],
-    hiddenimports=[
-        'doctr',
-        'torch',
-        'torchvision',
-        'PIL',
-        'numpy',
-        'cv2',
-        'psutil',
-        'pynvml',
-        'GPUtil',
-        'PyPDF2',
-        'ocrmypdf',
-        'ocrmypdf.data',  # Add ocrmypdf.data module
-        'pdf2image'
-    ] + collect_submodules('ocrmypdf'),  # Include all ocrmypdf submodules
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
+    noarchive=False,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
+    cipher=None
 )
 
-# Add ocrmypdf data files
-ocrmypdf_files = [(dest, src, 'DATA') for dest, src in collect_data_files('ocrmypdf')]
-a.datas.extend(ocrmypdf_files)
-
-# Ensure proper collection format for torch and model files
-model_files = [(dest, src, 'DATA') for dest, src in collect_data_files('doctr')]
-a.datas.extend(model_files)
-
-torch_files = [(dest, src, 'DATA') for dest, src in collect_data_files('torch')]
-a.datas.extend(torch_files)
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
@@ -57,7 +59,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -73,5 +75,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='VisionLane'
+    name='VisionLane',
 )
