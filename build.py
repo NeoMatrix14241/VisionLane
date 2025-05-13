@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, get_package_paths
+from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
 
 # Custom hidden imports
 hiddenimports = [
