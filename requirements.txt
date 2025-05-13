@@ -7,14 +7,22 @@
 # 3.) pip install -r requirements.txt
 # 4.) python test_cuda.py (Test if CUDA is working)
 # 5.) python main.py
+#
+# To deactivate and delete python virtual environment:
+# 1.) deactivate
+# 2a.) Remove-Item -Recurse -Force .\.venv [POWERSHELL]
+# 2b.) rm -rf venv [BASH]
 
 
 # Modules/Dependencies to run DocTR
+
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch
+torchvision
+torchaudio
+
 PyQt6
 wmi
-torch --index-url https://download.pytorch.org/whl/cu126
-torchvision --index-url https://download.pytorch.org/whl/cu126
-torchaudio --index-url https://download.pytorch.org/whl/cu126
 python-doctr[torch]
 python-doctr
 ocrmypdf
@@ -25,8 +33,8 @@ numpy
 psutil
 nvidia-ml-py3
 GPUtil
-python-magic-bin; platform_system == "Windows"
-python-magic; platform_system != "Windows"
+python-magic-bin
+python-magic
 pdf2image
 img2pdf
 pdfminer.six
