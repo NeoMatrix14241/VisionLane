@@ -28,7 +28,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/VisionLane.git
+git clone https://github.com/NeoMatrix14241/VisionLane.git
 cd VisionLane
 ```
 
