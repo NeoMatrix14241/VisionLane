@@ -14,6 +14,10 @@
 # 2a.) Remove-Item -Recurse -Force .\.venv
 # For Linux [BASH]
 # 2b.) rm -rf venv
+#
+# To run from build:
+# 1.) Run build.bat or type "pyinstaller --clean build.spec"
+
 
 
 # Modules/Dependencies to run DocTR
@@ -45,3 +49,4 @@ pdfminer.six
 tqdm
 colorama
 typing_extensions
+pyinstaller

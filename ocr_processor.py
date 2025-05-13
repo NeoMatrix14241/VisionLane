@@ -429,11 +429,29 @@ class OCRProcessor:
     def process_folder(self, folder_path: Union[str, Path]) -> Dict:
         if self.is_cancelled or self._force_stop:
             raise InterruptedError("Processing cancelled")
+
         # Make input path absolute
         folder_path = Path(folder_path).resolve()
         abs_path = str(folder_path.absolute())
         self.input_path = folder_path
         logger.info(f"\nSelected: {abs_path}")
+
+        # Create timestamped subfolder for this processing session
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_dir = self.output_base_dir / f"OCR_Session_{timestamp}"
+
+        # Update subdirectories to be within the session directory
+        self.hocr_dir = self.session_dir / "hocr"
+        self.pdf_dir = self.session_dir / "pdf"
+        self.temp_dir = self.session_dir / "temp"
+
+        # Create output directories
+        for dir_path in [self.session_dir, self.hocr_dir, self.pdf_dir, self.temp_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created directory: {dir_path}")
+
+        logger.info(f"Output will be saved to: {self.session_dir}")
+
         # Count files by type first
         image_files = []
         pdf_files = []
@@ -444,6 +462,7 @@ class OCRProcessor:
                 elif path.suffix.lower() == '.pdf':
                     pdf_files.append(path)
         logger.info(f"Found: {len(image_files)} images, {len(pdf_files)} pdf\n")
+
         # Continue with existing processing
         all_files = [('image', p) for p in image_files]
         all_files.extend(('pdf', p) for p in pdf_files)
@@ -452,7 +471,7 @@ class OCRProcessor:
             logger.warning(f"No supported files found in folder: {folder_path}")
             return {"status": "no_files", "processed": 0, "total": 0}
         logger.info(f"Starting batch processing: {len(all_files)} files")
-        
+
         # Initialize state
         self.is_cancelled = False
         self.current_file = None
@@ -489,7 +508,7 @@ class OCRProcessor:
                     # Signal completion of this file
                     if self.progress_callback:
                         self.progress_callback(100, 100)  # Signal file completion
-                        
+
                 except Exception as e:
                     # Remove from processed files if failed
                     self._processed_files.discard(str(file_path))

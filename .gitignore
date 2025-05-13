@@ -11,6 +11,8 @@ __pycache__/
 # Distribution / packaging
 dist/
 build/
+output/
+logs/
 *.egg-info/
 
 # IDE settings

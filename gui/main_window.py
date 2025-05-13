@@ -29,7 +29,7 @@ from utils.safe_logger import SafeLogHandler
 logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self):  # Remove splash parameter if it exists
         try:
             # Initialize NVML and GPUtil
             self.nvml_initialized = False
@@ -125,8 +125,8 @@ class MainWindow(QMainWindow):
             self.setMinimumSize(800, 400)
             self._create_ui()
             
-            # Defer OCR initialization
-            QTimer.singleShot(0, self._delayed_init)
+            # Initialize OCR model
+            QTimer.singleShot(0, lambda: self._delayed_init())
             
             # Add last update time tracking
             self.last_progress_update = time.time()
