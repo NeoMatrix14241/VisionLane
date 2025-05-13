@@ -10,8 +10,10 @@
 #
 # To deactivate and delete python virtual environment:
 # 1.) deactivate
-# 2a.) Remove-Item -Recurse -Force .\.venv [POWERSHELL]
-# 2b.) rm -rf venv [BASH]
+# For Windows [PowerShell]
+# 2a.) Remove-Item -Recurse -Force .\.venv
+# For Linux [BASH]
+# 2b.) rm -rf venv
 
 
 # Modules/Dependencies to run DocTR
