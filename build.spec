@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import (
     get_package_paths
 )
 
-# Initial hidden imports
+# Explicit hidden imports for GUI/OCR/ML
 hiddenimports = [
     'doctr',
     'torch',
@@ -30,6 +30,11 @@ hiddenimports = [
     'pdfminer.converter',
     'pdfminer.pdfinterp',
     'pdfminer.pdfpage',
+    'PyQt6',
+    'PyQt6.QtWidgets',
+    'PyQt6.QtGui',
+    'PyQt6.QtCore',
+    'PyQt6.QtPrintSupport',
     'multiprocessing',
     'multiprocessing.context',
     'multiprocessing.connection',
@@ -43,12 +48,12 @@ hiddenimports = [
     'torch.multiprocessing.spawn',
 ]
 
-# Add submodules
+# Add package submodules PyInstaller may miss
 hiddenimports += collect_submodules('ocrmypdf')
 hiddenimports += collect_submodules('doctr')
 hiddenimports += collect_submodules('pdfminer')
 
-# Collect data files
+# Gather necessary data files
 datas = (
     collect_data_files('ocrmypdf') +
     collect_data_files('doctr') +
@@ -57,7 +62,7 @@ datas = (
     collect_data_files('pdfminer')
 )
 
-# Ensure 'pdf.ttf' is explicitly included
+# Include ocrmypdf font
 ocrmypdf_path = Path(get_package_paths('ocrmypdf')[0])
 pdf_ttf = ocrmypdf_path / 'data' / 'pdf.ttf'
 if pdf_ttf.exists():
@@ -66,7 +71,7 @@ else:
     print("Warning: pdf.ttf not found!")
 
 a = Analysis(
-    ['main.py'],  # Your entry script
+    ['main.py'],
     pathex=['.'],
     binaries=[],
     datas=datas,
@@ -90,7 +95,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=False,  # GUI mode, no console window
 )
 
 coll = COLLECT(
