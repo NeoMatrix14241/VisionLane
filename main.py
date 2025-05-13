@@ -1,20 +1,20 @@
 import sys
 import os
-from pathlib import Path
 import logging
 import traceback
+from pathlib import Path
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt, QCoreApplication
+from PyQt6.QtCore import QCoreApplication
 from gui.splash_screen import SplashScreen
 from utils.debug_helper import DebugLogger, CrashHandler
-
-# Create application first, before anything else
-app = QApplication(sys.argv)
-app.setStyle('Fusion')
+from multiprocessing import freeze_support  # Import freeze_support
 
 def main():
     debug_logger = None
     try:
+        # Ensure freeze_support is called for multiprocessing
+        freeze_support()
+
         # Show splash screen only during startup
         splash = SplashScreen(app)
         splash.show()
@@ -29,10 +29,8 @@ def main():
 
         # Initialize logging and debug
         splash.update_status("Initializing logging...", 30)
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
+        QCoreApplication.processEvents()
+
         logger = logging.getLogger(__name__)
         debug_logger = DebugLogger()
         
@@ -75,6 +73,13 @@ def main():
 
 if __name__ == '__main__':
     try:
+        # Initialize the QApplication
+        app = QApplication(sys.argv)
+        app.setStyle('Fusion')
+
+        # Ensure freeze_support is called when running as a frozen executable
+        freeze_support()
+        
         exit_code = main()
         logging.getLogger(__name__).debug(f"Application exited with code {exit_code}")
         sys.exit(exit_code)
