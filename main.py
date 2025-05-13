@@ -15,7 +15,9 @@ from multiprocessing import freeze_support
 class FastSplashScreen(QSplashScreen):
     """A minimal splash screen that matches the design of the main SplashScreen"""
     def __init__(self, app):
-        super().__init__()
+        # Add window flags to prevent disappearing when clicked
+        super().__init__(flags=Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+        
         # Create a pixmap with the same design as splash_screen.py
         pixmap = QPixmap(QSize(400, 200))
         pixmap.fill(Qt.GlobalColor.white)
@@ -86,6 +88,27 @@ class FastSplashScreen(QSplashScreen):
         layout.activate()
         self.content.updateGeometry()
         QCoreApplication.processEvents()
+        
+    def update_status(self, message, progress=None):
+        """Update status message and progress bar"""
+        self.status_label.setText(message)
+        if progress is not None:
+            self.progress.setValue(progress)
+        self.content.updateGeometry()
+        self.repaint()
+        QCoreApplication.processEvents()
+    
+    def paintEvent(self, event):
+        """Custom paint event to draw background and border"""
+        painter = QPainter(self)
+        painter.drawPixmap(0, 0, self.pixmap())
+        painter.setPen(QColor("#BDC3C7"))
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+    
+    # Override mousePressEvent to prevent splash from disappearing when clicked
+    def mousePressEvent(self, event):
+        # Just consume the event without doing anything
+        event.accept()
         
     def update_status(self, message, progress=None):
         """Update status message and progress bar"""
