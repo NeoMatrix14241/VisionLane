@@ -1,9 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, get_package_paths
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_submodules,
+    get_package_paths
+)
 
-# Custom hidden imports
+# Initial hidden imports
 hiddenimports = [
     'doctr',
     'torch',
@@ -17,13 +21,43 @@ hiddenimports = [
     'PyPDF2',
     'ocrmypdf',
     'ocrmypdf.data',
-    'pdf2image'
-] + collect_submodules('ocrmypdf')
+    'pdf2image',
+    'img2pdf',
+    'pdfminer',
+    'pdfminer.six',
+    'pdfminer.high_level',
+    'pdfminer.layout',
+    'pdfminer.converter',
+    'pdfminer.pdfinterp',
+    'pdfminer.pdfpage',
+    'multiprocessing',
+    'multiprocessing.context',
+    'multiprocessing.connection',
+    'multiprocessing.forking',
+    'multiprocessing.spawn',
+    'multiprocessing.util',
+    'multiprocessing.pool',
+    'multiprocessing.managers',
+    'multiprocessing.sharedctypes',
+    'torch.multiprocessing',
+    'torch.multiprocessing.spawn',
+]
 
-# Collect package data
-datas = collect_data_files('ocrmypdf') + collect_data_files('doctr') + collect_data_files('torch')
+# Add submodules
+hiddenimports += collect_submodules('ocrmypdf')
+hiddenimports += collect_submodules('doctr')
+hiddenimports += collect_submodules('pdfminer')
 
-# Ensure pdf.ttf is included
+# Collect data files
+datas = (
+    collect_data_files('ocrmypdf') +
+    collect_data_files('doctr') +
+    collect_data_files('torch') +
+    collect_data_files('PIL') +
+    collect_data_files('pdfminer')
+)
+
+# Ensure 'pdf.ttf' is explicitly included
 ocrmypdf_path = Path(get_package_paths('ocrmypdf')[0])
 pdf_ttf = ocrmypdf_path / 'data' / 'pdf.ttf'
 if pdf_ttf.exists():
@@ -32,7 +66,7 @@ else:
     print("Warning: pdf.ttf not found!")
 
 a = Analysis(
-    ['main.py'],  # Make sure your entry script is 'main.py'
+    ['main.py'],  # Your entry script
     pathex=['.'],
     binaries=[],
     datas=datas,
@@ -42,9 +76,6 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=None
 )
 
 pyz = PYZ(a.pure)
@@ -60,11 +91,6 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
 )
 
 coll = COLLECT(
@@ -74,6 +100,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
     name='VisionLaneOCR',
 )
