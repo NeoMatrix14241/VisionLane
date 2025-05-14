@@ -30,3 +30,6 @@ logs/
 .DS_Store
 Thumbs.db
 build.spec.bak
+icon_landscape_transparent.png
+icon_landscape.png
+icon.png

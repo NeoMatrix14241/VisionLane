@@ -132,6 +132,105 @@ try:
 except ImportError:
     print("Warning: DocTR not found!")
 
+# ADD DOCTR CACHE MODELS - Find automatically using user's home directory
+print("\n=== DEBUGGING DOCTR MODELS INCLUSION ===")
+found_doctr_models = False
+
+if sys.platform.startswith('win'):
+    # Windows path
+    user_home = os.path.expanduser('~')
+    doctr_cache_path = os.path.join(user_home, '.cache', 'doctr', 'models')
+else:
+    # Linux/Mac path
+    user_home = os.path.expanduser('~')
+    doctr_cache_path = os.path.join(user_home, '.cache', 'doctr', 'models')
+
+print(f"Looking for DocTR models in primary location: {doctr_cache_path}")
+if os.path.exists(doctr_cache_path):
+    # List files found to confirm content
+    print(f"Found DocTR cache directory at {doctr_cache_path}")
+    print("Files found in this directory:")
+    for root, dirs, files in os.walk(doctr_cache_path):
+        for file in files:
+            print(f"  - {os.path.join(root, file)}")
+    
+    # Add with a more explicit destination path
+    datas.append((doctr_cache_path, os.path.join('doctr', 'cache', 'models')))
+    print(f"Added DocTR cached models from {doctr_cache_path} to 'doctr/cache/models'")
+    found_doctr_models = True
+else:
+    print(f"Warning: DocTR cache directory not found at {doctr_cache_path}")
+    
+    # Try alternative locations with more verbose logging
+    print("Searching alternative DocTR model locations:")
+    alternate_paths = []
+    
+    # Try to find through doctr package
+    try:
+        import doctr
+        pkg_path = os.path.dirname(doctr.__file__)
+        print(f"Found DocTR package at: {pkg_path}")
+        
+        # Check for models directory within the package
+        pkg_models_path = os.path.join(pkg_path, 'models')
+        if os.path.exists(pkg_models_path):
+            print(f"Found DocTR package models at: {pkg_models_path}")
+            alternate_paths.append(pkg_models_path)
+        
+        # Look for cache relative to package
+        cache_rel_path = os.path.join(os.path.dirname(pkg_path), '.cache', 'doctr', 'models')
+        alternate_paths.append(cache_rel_path)
+    except ImportError:
+        print("Could not import doctr package")
+        
+    # Try common alternative locations
+    if sys.platform.startswith('win'):
+        appdata_path = os.path.join(os.environ.get('APPDATA', ''), 'doctr', 'models')
+        localappdata_path = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'doctr', 'models')
+        alternate_paths.append(appdata_path)
+        alternate_paths.append(localappdata_path)
+        print(f"Checking Windows-specific paths: \n  - {appdata_path}\n  - {localappdata_path}")
+    
+    # Check all alternate paths
+    for alt_path in alternate_paths:
+        print(f"Checking alternate path: {alt_path}")
+        if os.path.exists(alt_path):
+            print(f"Found DocTR models at alternate path: {alt_path}")
+            print("Files found in this directory:")
+            for root, dirs, files in os.walk(alt_path):
+                for file in files:
+                    print(f"  - {os.path.join(root, file)}")
+            
+            datas.append((alt_path, os.path.join('doctr', 'models')))
+            print(f"Added DocTR models from alternate path: {alt_path} to 'doctr/models'")
+            found_doctr_models = True
+            break
+            
+# If we still haven't found the models, try a direct import to learn how doctr locates its models
+if not found_doctr_models:
+    print("No DocTR model directories found in standard locations. Trying to detect via doctr import...")
+    try:
+        import doctr
+        import doctr.models
+        print("Successfully imported doctr.models")
+        
+        # Try to find any relevant methods that might help us locate models
+        model_funcs = [attr for attr in dir(doctr.models) if callable(getattr(doctr.models, attr)) and attr.startswith("get_")]
+        print(f"Found possible model getter functions: {model_funcs}")
+        
+        # If there's a get_model_dir function or similar, try to use it
+        if hasattr(doctr.models, "get_model_dir"):
+            model_dir = doctr.models.get_model_dir()
+            print(f"DocTR model directory according to get_model_dir(): {model_dir}")
+            if os.path.exists(model_dir):
+                datas.append((model_dir, os.path.join('doctr', 'models')))
+                print(f"Added DocTR models from detected path: {model_dir}")
+                found_doctr_models = True
+    except Exception as e:
+        print(f"Error while trying to detect DocTR models via import: {e}")
+
+print("=== END OF DOCTR MODELS DEBUGGING ===\n")
+
 # Gather necessary data files
 datas += collect_data_files('ocrmypdf')
 datas += collect_data_files('doctr')
@@ -219,7 +318,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # Set to True for debugging, change to False for production
+    console=True,  # Set to True for debugging, change to False for production
     icon='icon.ico' if os.path.exists('icon.ico') else None,
 )
 
