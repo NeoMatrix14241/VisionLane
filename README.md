@@ -1,6 +1,6 @@
 # VisionLane OCR
 
-[EXPERIMENTAL RELEASE]
+[EXPERIMENTAL RELEASE AND WILL BE UPDATED IN THE FUTURE]
 
 A powerful OCR (Optical Character Recognition) application built with DocTR and PyQt6, designed for high-performance document processing with GPU acceleration support.
 
