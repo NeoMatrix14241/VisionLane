@@ -1,6 +1,6 @@
 @echo off
 
-title Build VisionLane Application
+title Build VisionLane OCR Application
 REM --------------------------------------------------------
 REM VisionLane Build Script
 REM --------------------------------------------------------
