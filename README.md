@@ -30,6 +30,30 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - NVIDIA GPU with CUDA support (optional, but recommended)
 - Windows/Linux OS
 
+Roadmap
+The following features and improvements are planned for future releases:
+
+🔧 Functional Improvements
+ Fix initialization of models if not found after build
+→ Automatically download or notify if models are missing in cache directory (C:\Users\%USERNAME%\.doctr\cache\*.pt)
+
+ Add custom selection for DocTR text detection and recognition models
+→ User-selectable models for more flexibility and accuracy tuning
+
+ Implement a config file to persist user settings
+→ Save UI preferences, model selections, output options, etc.
+
+📁 File Handling Enhancements
+ Add option to archive processed files
+→ Automatically move completed input files to a separate folder
+
+ Add compression function for output PDFs
+→ Preserve searchable text while applying JPEG-based compression
+
+🎨 UI/UX Features
+ Add dark mode toggle
+→ Supports system default, with manual switch option
+
 ## Installation
 
 1. Clone the repository:
