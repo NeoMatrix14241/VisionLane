@@ -40,7 +40,7 @@ The following features and improvements are planned for future releases:
 - [ ] Add custom selection for DocTR text detection and recognition models  
   _→ User-selectable models for more flexibility and accuracy tuning_
 - [ ] Implement a config file to persist user settings  
-  _→ Save UI preferences, model selections, output options, select processor if CPU or GPU etc._
+  _→ Save UI preferences, text detection and text recognition model selections, input/output/archive options, select processor if CPU or GPU etc._
 
 ### 📁 File Handling Enhancements
 - [ ] Add option to archive processed files  
