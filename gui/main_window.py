@@ -1145,21 +1145,21 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Success", "Performance settings updated!")
 
     def _show_about(self):
-        QMessageBox.about(
-            self,
-            "About DocTR OCR Engine",
-            """<h3>DocTR OCR Engine</h3>
-            <p>Version 1.0.0</p>
-            <p>A powerful OCR engine using DocTR for document processing.</p>
-            <p>Supports:</p>
+        about_text = """
+            <h3>VisionLane OCR</h3>
+            <p><b>Version:</b> 1.0.0.0</p>
+            <p>A powerful OCR engine built with <a href='https://github.com/mindee/doctr'>DocTR</a> for document processing.</p>
+            <p><b>Features:</b></p>
             <ul>
-                <li>Multiple image formats</li>
-                <li>PDF processing</li>
-                <li>Batch processing</li>
-                <li>GPU acceleration (when available)</li>
+                <li>Supports multiple image formats (JPG, PNG, TIFF, etc.)</li>
+                <li>Exports searchable PDF and HOCR</li>
+                <li>Batch processing for folders</li>
+                <li>GPU acceleration when available</li>
             </ul>
-            <p>Author: NeoMatrix14241</p>"""
-        )
+            <p><b>Author:</b> <a href='https://github.com/NeoMatrix14241'>NeoMatrix14241</a></p>
+            <p><i>Visit the <a href='https://github.com/NeoMatrix14241/VisionLane'>GitHub repository</a> for updates.</i></p>
+            """
+        QMessageBox.about(self, "About VisionLane OCR", about_text)
 
     def _browse_directory(self, line_edit):
         dir_path = QFileDialog.getExistingDirectory(
