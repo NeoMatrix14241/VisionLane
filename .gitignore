@@ -11,6 +11,8 @@ __pycache__/
 # Distribution / packaging
 dist/
 build/
+icon/
+input/
 output/
 logs/
 *.egg-info/
@@ -30,6 +32,3 @@ logs/
 .DS_Store
 Thumbs.db
 build.spec.bak
-icon_landscape_transparent_bg.png
-icon_landscape.png
-icon.png
