@@ -47,8 +47,8 @@ The following features and improvements are planned for future releases:
   _→ Automatically move completed input files to a separate folder_
 - [ ] Add compression function for output PDFs  
   _→ Preserve searchable text while applying JPEG-based compression_
-- [ ] Fix where it suddenly creates output folder in the repository when running
-  _→ It remains there ever since I started making it as CLI based OCR processor
+- [ ] Fix where it suddenly creates output folder in the repository when running  
+  _→ It remains there ever since I started making it as CLI based OCR processor_
 
 ### 🎨 UI/UX Features
 - [ ] Add dark mode toggle  
