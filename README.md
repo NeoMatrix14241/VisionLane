@@ -51,8 +51,9 @@ The following features and improvements are planned for future releases:
   _→ It remains there ever since I started making it as CLI based OCR processor_
 
 ### 🎨 UI/UX Features
-- [ ] Add dark mode toggle  
-  _→ Supports system default, with manual switch option_
+- [ ] Add dark mode toggle and various bug fixes  
+  _→ Supports system default, with manual switch option_  
+  _→ Includes various bug fixes to the GUI also_  
 
 ## Installation
 
