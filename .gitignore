@@ -32,3 +32,4 @@ logs/
 .DS_Store
 Thumbs.db
 build.spec.bak
+uninstall_modules.txt
