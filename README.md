@@ -12,6 +12,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)
 ![GPU Support](https://img.shields.io/badge/GPU-CUDA_Support-green.svg)
+[![Download](https://img.shields.io/badge/Download-v0.1.0-blue?logo=github)](https://github.com/NeoMatrix14241/VisionLaneOCR/releases/download/v0.1.0/VisionLaneOCR-v0.1.0.7z)
 
 ## Features
 
