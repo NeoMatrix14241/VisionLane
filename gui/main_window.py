@@ -996,14 +996,14 @@ class MainWindow(QMainWindow):
                     total_gb = mem_info.total / 1024**3
                     
                     self.cpu_label.setText(f"GPU Usage: {gpu_util}%")
-                    self.memory_label.setText(f"GPU Memory Allocated: {used_gb:.1f}GB/{total_gb:.1f}GB")
+                    self.memory_label.setText(f"GPU Memory Allocated: {used_gb:.1f}MB/{total_gb:.1f}MB")
                 else:
                     # Try GPUtil as fallback
                     import GPUtil
                     gpu = GPUtil.getGPUs()[0]  # Get first GPU
                     
                     self.cpu_label.setText(f"GPU Usage: {gpu.load * 100:.1f}%")
-                    self.memory_label.setText(f"GPU Memory Allocated: {gpu.memoryUsed:.1f}GB/{gpu.memoryTotal:.1f}GB")
+                    self.memory_label.setText(f"GPU Memory Allocated: {gpu.memoryUsed:.1f}MB/{gpu.memoryTotal:.1f}MB")
                     
             except Exception as e:
                 logger.error(f"Error getting GPU metrics: {e}")
@@ -1012,7 +1012,7 @@ class MainWindow(QMainWindow):
                     used = torch.cuda.memory_allocated(0) / 1024**3
                     total = torch.cuda.get_device_properties(0).total_memory / 1024**3
                     self.cpu_label.setText("GPU Usage: N/A")
-                    self.memory_label.setText(f"GPU Memory Allocated: {used:.1f}GB/{total:.1f}GB")
+                    self.memory_label.setText(f"GPU Memory Allocated: {used:.1f}MB/{total:.1f}MB")
         else:
             # CPU metrics (unchanged)
             self.device_label.setText("Processing Device: CPU")
