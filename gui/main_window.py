@@ -177,7 +177,14 @@ class MainWindow(QMainWindow):
         last_output_folder = self.config.get("Paths", "output_folder", fallback="")
         last_output_pdf = self.config.get("Paths", "output_pdf", fallback="")
         # Performance
-        thread_count = self.config.getint("Performance", "thread_count", fallback=psutil.cpu_count(logical=True))
+        max_threads = psutil.cpu_count(logical=True)
+        thread_count_str = self.config.get("Performance", "thread_count", fallback=str(max_threads))
+        try:
+            thread_count = int(thread_count_str)
+            if thread_count < 1 or thread_count > max_threads:
+                thread_count = max_threads
+        except Exception:
+            thread_count = max_threads
         operation_timeout = self.config.getint("Performance", "operation_timeout", fallback=600)
         chunk_timeout = self.config.getint("Performance", "chunk_timeout", fallback=60)
         # Models: detection_model and recognition_model already set above
@@ -1886,7 +1893,7 @@ class MainWindow(QMainWindow):
             self._reset_processing_state()
             
         except Exception as e:
-            logger.error(f"Error in error handler: {e}", exc_info=True)
+                       logger.error(f"Error in error handler: {e}", exc_info=True)
 
     def _on_open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -1948,11 +1955,10 @@ class MainWindow(QMainWindow):
         
         # Thread count setting 
         thread_count = QSpinBox()
-        thread_count = QSpinBox()
         max_threads = psutil.cpu_count(logical=True)
         thread_count.setRange(1, max_threads)
-        thread_count.setValue(max_threads) 
-        thread_count.setEnabled(True) 
+        thread_count.setValue(self._config_values.get("thread_count", max_threads))
+        thread_count.setEnabled(True)
         layout.addRow("Thread Count:", thread_count) 
         
         # Add timeout settings
