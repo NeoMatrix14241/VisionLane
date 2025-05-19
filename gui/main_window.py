@@ -876,11 +876,43 @@ class MainWindow(QMainWindow):
         parent_layout.addLayout(compression_layout)
 
         # --- Ghostscript check and UI update ---
+        import re
+
         def check_ghostscript():
             # Windows: gswin64c.exe, Linux/Mac: gs
-            gs_exe = "gswin64c.exe" if sys.platform.startswith("win") else "gs"
-            found = shutil.which(gs_exe) is not None
-            return found
+            if sys.platform.startswith("win"):
+                exe_name = "gswin64c.exe"
+                # 1. Check PATH
+                gs_path = shutil.which(exe_name)
+                if gs_path:
+                    return True, gs_path
+                # 2. Search in Program Files locations
+                search_dirs = [
+                    Path("C:/Program Files/gs"),
+                    Path("C:/Program Files (x86)/gs"),
+                ]
+                found = []
+                for base in search_dirs:
+                    if base.exists():
+                        for sub in base.iterdir():
+                            if sub.is_dir():
+                                exe = sub / "bin" / exe_name
+                                if exe.exists():
+                                    # Try to extract version from folder name
+                                    m = re.search(r'(\d+(\.\d+)*)', sub.name)
+                                    version = tuple(map(int, m.group(1).split('.'))) if m else (0,)
+                                    found.append((version, exe))
+                if found:
+                    # Sort by version descending, pick highest
+                    found.sort(reverse=True)
+                    return True, str(found[0][1])
+                return False, None
+            else:
+                exe_name = "gs"
+                gs_path = shutil.which(exe_name)
+                if gs_path:
+                    return True, gs_path
+                return False, None
 
         def show_ghostscript_dialog():
             QMessageBox.information(
@@ -893,7 +925,7 @@ class MainWindow(QMainWindow):
         self.compression_info_button.clicked.connect(show_ghostscript_dialog)
 
         def update_compression_controls():
-            gs_found = check_ghostscript()
+            gs_found, gs_path = check_ghostscript()
             enabled = self.compress_checkbox.isChecked() and gs_found
             self.compression_type_combo.setEnabled(enabled)
             ctype = self.compression_type_combo.currentText().lower()
@@ -912,6 +944,8 @@ class MainWindow(QMainWindow):
             else:
                 self.compress_checkbox.setEnabled(True)
                 self.compression_info_button.setVisible(False)
+                # Optionally, store gs_path for use in compression logic
+                self._gs_executable_path = gs_path
 
         self.compress_checkbox.stateChanged.connect(update_compression_controls)
         self.compression_type_combo.currentIndexChanged.connect(update_compression_controls)
