@@ -58,8 +58,10 @@ The following features and improvements are planned for future releases:
   _→ Save UI preferences, text detection and text recognition model selections, input/output/archive options, select processor if CPU or GPU etc._
 - [x] **Archiving option for processed files**  
   _→ Optionally move processed input files/folders to a specified archive directory, preserving folder structure. Archive settings are saved and restored from config.ini._
-- [ ] Added option to switch GPU and CPU  
+- [ ] Add an option to switch GPU and CPU  
   _→ GPU acceleration can be disabled and use CPU instead_
+- [ ] Add a function to check if the recommended 8GB VRAM is met, else suggest to switch to CPU  
+  _→ Below 6GB are crashing often based on my tests_
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
@@ -132,16 +134,5 @@ python main.py
 - Archive settings are saved in `config.ini` and restored on next launch.
 - If archiving is not enabled or the archive path is not specified, input files are not moved.
 - Proper error handling is provided if the archive directory is missing or invalid.
-
-## Troubleshooting
-
-### Random Flashing Window Appears
-
-If you see a random flashing window (such as a command prompt or terminal) briefly appear during processing, especially in the built (PyInstaller) version, this is expected on Windows. It is caused by background subprocesses (such as Ghostscript for PDF compression, or CUDA/PyTorch initialization) that may momentarily open a console window.
-
-**How to minimize or avoid:**
-- This release now suppresses the Ghostscript window when compressing PDFs on Windows.
-- If you still see a flashing window, ensure you are using the latest version.
-- The window is cosmetic and does not affect OCR results or stability.
 
 ---
