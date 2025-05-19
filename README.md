@@ -38,8 +38,8 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 
 ## Requirements
 
-- Python 3.10 or higher
-- NVIDIA GPU with CUDA support (optional, but recommended)
+- Python 3.10 or higher (Tested from 3.10 to 3.12.6)
+- NVIDIA GPU with CUDA/recently supported drivers (optional, else will fallback to CPU)
 - Windows/Linux OS
 
 ## Roadmap
