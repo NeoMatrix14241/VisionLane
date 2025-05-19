@@ -193,12 +193,12 @@ def main(app, splash):
         logger.debug(f"Python executable: {sys.executable}")
         logger.debug(f"Working directory: {os.getcwd()}")
         
-        # Import main window
-        splash.update_status("Loading main window...", 60)
-        QCoreApplication.processEvents()
+        # Configure base directories for application
+        base_dir = Path(__file__).parent.resolve()
         
+        # Import main window
         from gui.main_window import MainWindow
-        window = MainWindow()
+        window = MainWindow()  # Remove output_base_dir parameter
         
         # Store references for cleanup
         app.window = window

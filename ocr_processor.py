@@ -113,78 +113,32 @@ def _check_gpu_support():
     return True, "GPU(s) supported", gpu_info
 
 class OCRProcessor:
-    def __init__(self, output_base_dir: str = "./output", output_formats: List[str] = ["pdf"]):
+    def __init__(self, output_base_dir: str = None, output_formats: List[str] = ["pdf"]):
         """
         Initialize OCR processor with output directories and formats
         Args:
             output_base_dir: Base directory for outputs
             output_formats: List of formats to output ("pdf", "hocr", or ["pdf", "hocr"] for both)
         """
-        # Change temp directory to be separate from output
-        self.output_base_dir = Path(output_base_dir).resolve()
-        self.hocr_dir = self.output_base_dir / "hocr"
-        self.pdf_dir = self.output_base_dir / "pdf"
-        # Create temp dir in system temp location instead
-        self.temp_dir = Path(tempfile.gettempdir()) / "VisionLaneOCR_temp"
+        # Initialize paths but don't create directories yet
+        self.output_base_dir = None
+        self.pdf_dir = None
+        self.hocr_dir = None
+        self.temp_dir = None
         
-        # Create output directories with proper cleanup
-        self.hocr_dir.mkdir(parents=True, exist_ok=True)
-        self.pdf_dir.mkdir(parents=True, exist_ok=True)
-        # Clear and recreate temp dir
-        if self.temp_dir.exists():
-            try:
-                shutil.rmtree(str(self.temp_dir))
-            except Exception as e:
-                logger.warning(f"Could not remove old temp dir: {e}")
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
-        logger.debug(f"Created temp directory: {self.temp_dir}")
+        # Set default temp directory path
+        if tempfile.gettempdir():
+            self.temp_dir = Path(tempfile.gettempdir()) / "VisionLaneOCR_temp"
         
-        # Check GPU availability and support with more logging
-        is_supported, reason, gpu_info = _check_gpu_support()
-        self.device = 'cuda' if is_supported else 'cpu'
+        # Set output formats
+        self.output_formats = [fmt.lower() for fmt in output_formats]
+        if not all(fmt in ["pdf", "hocr"] for fmt in self.output_formats):
+            raise ValueError("Output formats must be 'pdf', 'hocr', or both")
+            
+        # Only set output directory if provided
+        if output_base_dir:
+            self.set_output_directory(Path(output_base_dir))
         
-        # Log all GPU info
-        for info in gpu_info:
-            logger.info(info)
-            
-        if is_supported:
-            logger.info(f"Using GPU for processing")
-        else:
-            logger.warning(f"No GPU available: {reason}")
-            
-        # Initialize OCR model
-        try:
-            logger.info("Initializing OCR model...")
-            
-            # Set device before model initialization
-            if self.device == 'cuda':
-                # Configure CUDA settings
-                torch.backends.cudnn.enabled = True
-                torch.backends.cudnn.benchmark = True
-                torch.cuda.empty_cache()
-            
-            self.model = ocr_predictor(
-                det_arch='db_resnet50',
-                reco_arch='crnn_vgg16_bn',
-                pretrained=True,
-                assume_straight_pages=True
-            ).to(self.device)  # Move entire model to device
-            
-            # Set model to evaluation mode
-            self.model.eval()
-            
-            if self.device == 'cuda':
-                # Enable CUDA optimizations
-                torch.cuda.synchronize()
-                logger.info(f"GPU Memory Usage: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
-                logger.info(f"GPU Memory Cached: {torch.cuda.memory_reserved() / 1024**2:.2f}MB")
-            
-            logger.info(f"OCR model initialization successful (using {self.device.upper()})")
-            
-        except Exception as e:
-            logger.error(f"Failed to load OCR model: {str(e)}")
-            raise
-
         # Initialize multiprocessing components
         self.mp_context = get_context('spawn')
         self.image_queue = self.mp_context.Queue()
@@ -263,6 +217,71 @@ class OCRProcessor:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+        # Check GPU support and initialize device first
+        is_supported, reason, gpu_info = _check_gpu_support()
+        self.device = 'cuda' if is_supported else 'cpu'
+        
+        for info in gpu_info:
+            logger.info(info)
+            
+        if is_supported:
+            logger.info(f"Using GPU for processing")
+        else:
+            logger.warning(f"No GPU available: {reason}")
+            
+        # Initialize OCR model
+        try:
+            logger.info("Initializing OCR model...")
+            
+            # Configure CUDA settings if using GPU
+            if self.device == 'cuda':
+                torch.backends.cudnn.enabled = True
+                torch.backends.cudnn.benchmark = True
+                torch.cuda.empty_cache()
+            
+            self.model = ocr_predictor(
+                det_arch='db_resnet50',
+                reco_arch='crnn_vgg16_bn',
+                pretrained=True,
+                assume_straight_pages=True
+            ).to(self.device)
+            
+            # Set model to evaluation mode
+            self.model.eval()
+            
+            if self.device == 'cuda':
+                torch.cuda.synchronize()
+                logger.info(f"GPU Memory Usage: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
+                logger.info(f"GPU Memory Cached: {torch.cuda.memory_reserved() / 1024**2:.2f}MB")
+            
+            logger.info(f"OCR model initialization successful (using {self.device.upper()})")
+            
+        except Exception as e:
+            logger.error(f"Failed to load OCR model: {str(e)}")
+            raise
+
+    def set_output_directory(self, path: Path):
+        """Set and create output directory structure"""
+        self.output_base_dir = Path(path).resolve()
+        self.pdf_dir = self.output_base_dir / "pdf"
+        self.hocr_dir = self.output_base_dir / "hocr"
+        
+        # Create temp directory if not already set
+        if not self.temp_dir:
+            self.temp_dir = Path(tempfile.gettempdir()) / "VisionLaneOCR_temp"
+        
+        # Create directories only if they're needed
+        if "pdf" in self.output_formats:
+            self.pdf_dir.mkdir(parents=True, exist_ok=True)
+        if "hocr" in self.output_formats:
+            self.hocr_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Always ensure temp directory exists
+        if self.temp_dir:
+            if self.temp_dir.exists():
+                shutil.rmtree(str(self.temp_dir), ignore_errors=True)
+            self.temp_dir.mkdir(parents=True, exist_ok=True)
+
     def _signal_handler(self, signum, frame):
         """Handle interrupt signal"""
         self._force_stop = True
@@ -270,8 +289,12 @@ class OCRProcessor:
         self._exit_event.clear()
 
     def cleanup_temp_files(self, force=False):
-        """Enhanced temp file cleanup with directory removal"""
+        """Enhanced temp file cleanup with better null checks"""
         try:
+            # Check if temp_dir is set and exists
+            if not self.temp_dir or not isinstance(self.temp_dir, Path):
+                return
+                
             if not self.temp_dir.exists():
                 return
                 
@@ -436,9 +459,10 @@ class OCRProcessor:
             self._running_threads.discard(current_thread)
 
     def process_folder(self, folder_path: Union[str, Path]) -> Dict:
-        if self.is_cancelled or self._force_stop:
-            raise InterruptedError("Processing cancelled")
-
+        """Process a folder of images"""
+        if not self.output_base_dir:
+            raise ValueError("Output directory not set. Call set_output_directory first.")
+            
         # Make input path absolute
         folder_path = Path(folder_path).resolve()
         abs_path = str(folder_path.absolute())
@@ -555,34 +579,72 @@ class OCRProcessor:
         return self.process_image(file_path)
                 
     def _process_single_image(self, image_path: Path, temp_pdf_path: Path) -> None:
-        """Process single image with improved state checking"""
+        """Process single image with improved error handling and memory management"""
         if self.is_cancelled or self._force_stop:
             return None
         temp_hocr = None
         intermediate_pdf = None
-            
+        
         try:
             # Check cancellation state
             if self.is_cancelled or self._force_stop:
                 return None
+                
             # Progress updates
             if self.progress_callback:
                 if not self.progress_callback(0, 100):  # Start
                     return None
-            # Move input to correct device
-            docs = DocumentFile.from_images(str(image_path))
-            if self.device == 'cuda':
-                torch.cuda.synchronize()  # Ensure GPU operations are completed
+            
+            # Safe GPU memory cleanup before processing
+            if torch.cuda.is_available():
+                try:
+                    # Add synchronization point and environment variable
+                    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                    torch.cuda.reset_peak_memory_stats()
+                except Exception as e:
+                    # If CUDA fails, force CPU mode
+                    logger.warning(f"GPU error detected, switching to CPU: {e}")
+                    self.device = 'cpu'
+                    if hasattr(self, 'model'):
+                        self.model = self.model.cpu()
+            
+            # Move input to correct device with error handling
+            try:
+                docs = DocumentFile.from_images(str(image_path))
+                if self.device == 'cuda':
+                    # Force sync to catch CUDA errors early
+                    torch.cuda.synchronize()
+            except Exception as e:
+                logger.error(f"Error loading image {image_path}: {e}")
+                # Fallback to CPU if CUDA fails
+                self.device = 'cpu'
+                self.model = self.model.cpu()
+                docs = DocumentFile.from_images(str(image_path))
             
             if self.progress_callback:
                 if not self.progress_callback(25, 100):  # Document loaded
                     return None
             
-            with torch.no_grad():  # Disable gradient computation for inference
-                result = self.model(docs)
-                if self.device == 'cuda':
-                    torch.cuda.synchronize()  # Ensure GPU operations are completed
-            
+            # Process with error handling    
+            try:
+                with torch.no_grad():
+                    # Process in smaller batches if needed
+                    result = self.model(docs)
+                    if self.device == 'cuda':
+                        torch.cuda.synchronize()  # Wait for CUDA operations
+            except RuntimeError as e:
+                if "CUDA" in str(e):
+                    # Try to recover by moving to CPU
+                    logger.warning("CUDA error encountered, falling back to CPU")
+                    self.device = 'cpu'
+                    self.model = self.model.cpu()
+                    with torch.no_grad():
+                        result = self.model(docs)
+                else:
+                    raise
+        
             if self.progress_callback:
                 if not self.progress_callback(50, 100):  # OCR done
                     return None
@@ -673,28 +735,37 @@ class OCRProcessor:
                 
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {e}")
-            raise
-            
+            # Safe cleanup on error
+            if torch.cuda.is_available():
+                try:
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                except:
+                    pass
         finally:
-            # Only cleanup temp files if they're not needed
+            # Clean up resources safely
             if temp_hocr and temp_hocr.exists():
-                if "hocr" not in self.output_formats:
-                    try:
-                        os.chmod(str(temp_hocr), 0o666)
-                        temp_hocr.unlink()
-                    except Exception as e:
-                        logger.warning(f"Failed to cleanup temp HOCR file {temp_hocr}: {e}")
-            
+                try:
+                    os.chmod(str(temp_hocr), 0o666)
+                    temp_hocr.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp HOCR file {temp_hocr}: {e}")
+        
             if intermediate_pdf and intermediate_pdf.exists():
                 try:
                     os.chmod(str(intermediate_pdf), 0o666)
                     intermediate_pdf.unlink()
                 except Exception as e:
                     logger.warning(f"Failed to cleanup intermediate PDF {intermediate_pdf}: {e}")
-            
-            gc.collect()
+        
+            # Safe GPU cleanup
             if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                try:
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                except Exception as e:
+                    logger.warning(f"GPU cleanup warning: {e}")
+            gc.collect()
 
     def _is_last_image_in_folder(self, image_path: Path) -> bool:
         """

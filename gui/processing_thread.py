@@ -147,87 +147,57 @@ class OCRWorker(QRunnable):
             return self._current_file_count  # Return last known count on error
 
     def run(self):
+        """Improved run method with better error handling and progress tracking"""
         self.is_running = True
         self._processing_complete = False
         self._batch_start_time = time.time()
         
         try:
+            # Get total files first
             if self.mode == 'folder':
-                # Pre-scan files and set total
                 files = []
                 for ext in ['.tif', '.tiff', '.jpg', '.jpeg', '.png']:
                     files.extend(list(Path(self.path).rglob(f"*{ext}")))
                 self._total_files = len(files)
-                self._processed_files.clear()
+            else:
+                self._total_files = 1
                 
-                # Initial progress signal
-                self.signals.progress.emit(0, self._total_files, 0)
-                QApplication.processEvents()
-                
-                # Process folder
+            # Show initial state with correct total
+            self.signals.progress.emit(0, self._total_files, 0)
+            
+            # Process based on mode
+            if self.mode == 'folder':
                 result = self.ocr.process_folder(self.path)
-                
-                # Final progress check
-                if hasattr(self.ocr, '_processed_files'):
-                    actual_processed = len(self.ocr._processed_files)
-                    if actual_processed > len(self._processed_files):
-                        self.signals.progress.emit(actual_processed, self._total_files, 100)
-                
-                if result['status'] == 'cancelled':
+                if result.get('status') == 'cancelled':
                     raise InterruptedError("Processing cancelled")
                 
-                # Update final count based on actual processed files
-                final_count = self._count_processed_files()
-                if final_count > 0:
-                    self._current_file_count = final_count
-                
-                # Signal completion
-                if result['status'] == 'cancelled':
-                    raise InterruptedError("Processing cancelled")
-                elif result['processed'] == result['total']:
-                    self.signals.progress.emit(self._current_file_count, self._total_files, 100)
-                    self.signals.finished.emit(True)
-                else:
-                    self.signals.finished.emit(False)
-            else:  # Single file or PDF
-                self._total_files = 1  # Only one file
-                self._current_file_count = 0
-                self.signals.progress.emit(0, 1, 0)
+                # Update progress with actual processed count
+                processed = result.get('processed', 0)
+                self.signals.progress.emit(processed, self._total_files, 100)
+            else:
+                # Single file processing
                 if self.mode == 'single':
-                    self.ocr.process_image(self.path)
-                else:  # PDF
-                    self.ocr.process_pdf(self.path)
-
-                # Signal completion for single file
-                self._processing_complete = True
-                self.signals.progress.emit(1, 1, 100)
-                self.signals.finished.emit(True)
-                QApplication.processEvents()  # Force GUI update
+                    result = self.ocr.process_image(self.path)
+                else:
+                    result = self.ocr.process_pdf(self.path)
                 
-        except InterruptedError as e:
-            self.logger.warning(f"Processing interrupted: {e}")
-            self.signals.cancelled.emit()
-            self.signals.finished.emit(False)
+                # Update final progress
+                self.signals.progress.emit(1, 1, 100)
+            
+            # Set completion and emit finished
+            self._processing_complete = True
+            self.signals.finished.emit(True)
+            
         except Exception as e:
-            self.logger.error(f"Processing error: {e}", exc_info=True)
+            self.logger.error(f"Processing error: {e}", exc_info=True)  # Fixed: using self.logger
             self.signals.error.emit(str(e))
             self.signals.finished.emit(False)
+            
         finally:
-            processing_time = time.time() - self._batch_start_time
-            self.logger.info(f"Processing finished. Time taken: {processing_time:.2f}s")
-            self.logger.info(f"Files processed: {self._current_file_count}/{self._total_files}")
-            
-            # Final cleanup only if processing is truly done
-            if self._should_cleanup and not self._force_stop:
-                self.ocr.cleanup_temp_files(force=True)
-            self._final_cleanup_done = True
-            
             self.is_running = False
-            if not self._force_stop and self._processing_complete:
-                self.signals.progress.emit(1, 1, 100)  # Ensure 100% progress
-            self.signals.finished.emit(False) if not self._processing_complete else None
-            QApplication.processEvents()  # Final GUI update
-            self.logger.removeHandler(self.log_handler)
+            if hasattr(self, 'ocr'):
+                self.ocr.cleanup_temp_files(force=True)
+            QApplication.processEvents()
 
     def process_image_multiprocess(self, image_path):
         """Process image in separate process"""

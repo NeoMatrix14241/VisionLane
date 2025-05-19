@@ -29,7 +29,7 @@ from utils.safe_logger import SafeLogHandler
 logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
-    def __init__(self):  # Remove splash parameter if it exists
+    def __init__(self):
         try:
             # Initialize NVML and GPUtil
             self.nvml_initialized = False
@@ -62,20 +62,20 @@ class MainWindow(QMainWindow):
                 'pdf': None
             }
             self.log_file = None
-            self.current_worker = None  # Initialize worker reference first
+            self.current_worker = None
             self.process_manager = ProcessManager()
             self.thread_pool = QThreadPool()
             self.thread_pool.setMaxThreadCount(4)
             
-            # Create output directories
-            self.output_base_dir = Path(__file__).parent.parent / "output"
-            self.pdf_dir = self.output_base_dir / "pdf"
-            self.hocr_dir = self.output_base_dir / "hocr"
-            self.temp_dir = self.output_base_dir / "temp"  # Add temp dir
+            # Don't create output directories until needed
+            self.project_root = Path(__file__).parent.parent.resolve()
+            self.output_base_dir = self.project_root / "data" / "output"  # Default path
+            self.pdf_dir = None
+            self.hocr_dir = None
+            self.temp_dir = None
             
-            # Create directories
-            for dir_path in [self.pdf_dir, self.hocr_dir, self.temp_dir]:
-                dir_path.mkdir(parents=True, exist_ok=True)
+            # Create data directory if it doesn't exist
+            (self.project_root / "data").mkdir(exist_ok=True)
             
             # Initialize progress tracking
             self.processed_files = 0
@@ -151,8 +151,8 @@ class MainWindow(QMainWindow):
     def _delayed_init(self):
         """Initialize heavy components after window is shown"""
         try:
-            # Initialize OCR processor
-            self.ocr = OCRProcessor(output_base_dir=str(self.output_base_dir))
+            # Initialize OCR processor without creating directories
+            self.ocr = OCRProcessor()  # No output_base_dir parameter
             self._setup_logging()
             self._setup_file_logging()
             
@@ -410,13 +410,24 @@ class MainWindow(QMainWindow):
         parent_layout.addWidget(self.tab_widget)
 
     def _browse_output(self, line_edit):
+        """Handle output directory selection"""
         dir_path = QFileDialog.getExistingDirectory(
             self,
             "Select Output Directory",
-            line_edit.text()
+            str(self.project_root)  # Start from project root
         )
         if dir_path:
+            # Update output path in UI
             line_edit.setText(dir_path)
+            
+            # Update OCR processor paths if it exists
+            if hasattr(self, 'ocr'):
+                self.ocr.output_base_dir = Path(dir_path)
+                # Let OCR processor create directories when needed
+                self.output_base_dir = self.ocr.output_base_dir
+                self.pdf_dir = self.ocr.pdf_dir
+                self.hocr_dir = self.ocr.hocr_dir
+                self.temp_dir = self.ocr.temp_dir
 
     def _select_single_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -612,7 +623,7 @@ class MainWindow(QMainWindow):
             QApplication.processEvents()
 
     def _reset_processing_state(self):
-        """Reset UI state while preserving progress"""
+        """Reset UI state completely"""
         try:
             # Stop timers safely
             if hasattr(self, 'update_timer'):
@@ -622,10 +633,19 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'progress_monitor'):
                 self.progress_monitor.stop()
             
-            # Keep last progress values
-            current_progress = f"Files Processed: {self.processed_files}/{self.total_files}"
-            self.overall_progress_label.setText(current_progress)
-            self.overall_progress.setValue(self.last_progress)
+            # Reset progress counters
+            self.processed_files = 0
+            self.total_files = 0
+            self.last_progress = 0
+            
+            # Reset UI labels to initial state
+            self.current_file_label.setText("No file processing")
+            self.overall_progress_label.setText("Total Progress: 0/0")
+            self.overall_progress.setValue(0)
+            
+            # Reset file tracking
+            self.file_tracking['current'] = None
+            self.file_tracking['processed'].clear()
             
             # Reset buttons
             self.start_button.setEnabled(True)
@@ -636,58 +656,39 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error in reset_processing_state: {e}")
 
-    def _check_output_conflicts(self, input_path: Path) -> bool:
-        """Check if output files would be overwritten"""
+    def _process_finished(self, success):
+        """Handle process completion"""
         try:
-            conflicts = []
+            # Stop timers but keep current progress visible
+            self.sync_timer.stop()
+            self.progress_monitor.stop()
+            self.update_timer.stop()
+            self.progress_timer.stop()
             
-            if self.tab_widget.currentIndex() == 0:  # Single file
-                rel_path = input_path.name
-                output_pdf = self.pdf_dir / f"{input_path.stem}.pdf"
-                output_hocr = self.hocr_dir / f"{input_path.stem}.xml"
-            elif self.tab_widget.currentIndex() == 1:  # Folder
-                # For folder, check if output folder exists and has files
-                if self.pdf_dir.exists():
-                    if any(self.pdf_dir.iterdir()):
-                        conflicts.append(str(self.pdf_dir))
-                if self.hocr_dir.exists():
-                    if any(self.hocr_dir.iterdir()):
-                        conflicts.append(str(self.hocr_dir))
-                return self._confirm_overwrite(conflicts) if conflicts else True
-            else:  # PDF
-                output_pdf = self.pdf_dir / f"{input_path.stem}_ocr.pdf"
-                output_hocr = self.hocr_dir / f"{input_path.stem}_hocr.xml"
-
-            if output_pdf.exists():
-                conflicts.append(str(output_pdf))
-            if output_hocr.exists():
-                conflicts.append(str(output_hocr))
-
-            return self._confirm_overwrite(conflicts) if conflicts else True
-
+            # Keep progress visible while showing completion message
+            if success and not self.ocr.is_cancelled:
+                # Show completion message and wait for user response
+                QMessageBox.information(self, "Success", "Processing completed successfully!")
+            
+            # Only reset the state after user has seen completion message
+            self.start_button.setEnabled(True)
+            self.cancel_button.setEnabled(False)
+            self.current_file_label.setText("No file processing")
+            self.overall_progress_label.setText("Total Progress: 0/0") 
+            self.overall_progress.setValue(0)
+            
+            # Clear internal state
+            self.processed_files = 0
+            self.total_files = 0
+            self.last_progress = 0
+            self.file_tracking['current'] = None
+            self.file_tracking['processed'].clear()
+            
+            QApplication.processEvents()
+            
         except Exception as e:
-            logger.error(f"Error checking conflicts: {e}")
-            return False
-
-    def _confirm_overwrite(self, conflicts: list) -> bool:
-        """Ask user confirmation for overwriting files"""
-        if not conflicts:
-            return True
-            
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setWindowTitle("Output Conflict")
-        msg.setText("Output files/folders already exist!")
-        msg.setInformativeText(
-            "The following will be overwritten:\n" + 
-            "\n".join(conflicts) + 
-            "\n\nDo you want to continue?"
-        )
-        msg.setStandardButtons(
-            QMessageBox.StandardButton.Yes | 
-            QMessageBox.StandardButton.No
-        )
-        return msg.exec() == QMessageBox.StandardButton.Yes
+            logger.error(f"Error during process completion: {e}")
+            self._reset_processing_state()
 
     def _update_gui(self):
         """Update GUI elements without blocking"""
@@ -699,204 +700,110 @@ class MainWindow(QMainWindow):
             if not self.current_worker or not self.current_worker.is_running:
                 return
 
-            # Direct OCR file monitoring
-            if hasattr(self.ocr, 'processed_count'):
-                real_count = self.ocr.processed_count
-            else:
-                # Count files directly from OCR instance
-                real_count = len(getattr(self.ocr, '_processed_files', []))
+            # Update current file display first
+            if hasattr(self.ocr, 'current_file') and self.ocr.current_file:
+                current = Path(self.ocr.current_file)
+                if current.name != getattr(self, '_last_displayed_file', None):
+                    self.current_file_label.setText(f"Processing: {current.name}")
+                    self._last_displayed_file = current.name
+                    logger.debug(f"Showing current file: {current.name}")
+                    QApplication.processEvents()
 
-            # Force update if real count is higher
-            if real_count > self.processed_files:
-                self.processed_files = real_count
-                self.max_processed = real_count
-                self.real_file_count = real_count
-                
-                # Force progress update
-                progress = int((real_count / self.total_files) * 100)
-                self.overall_progress.setValue(progress)
-                self.overall_progress_label.setText(
-                    f"Files Processed: {real_count}/{self.total_files}"
-                )
-                
-                logger.debug(f"Direct OCR count update: {real_count}/{self.total_files}")
-
-            # Update current file display
-            if hasattr(self.ocr, 'current_file'):
-                current = self.ocr.current_file
-                if current and current != self.file_tracking['current']:
-                    self.file_tracking['current'] = current
-                    self.current_file_label.setText(f"Processing: {Path(current).name}")
-            
-            # Force GUI refresh
-            self.overall_progress.repaint()
-            QApplication.processEvents()
+            # Only update progress when files are actually completed
+            if hasattr(self.ocr, '_processed_files'):
+                real_count = len(self.ocr._processed_files)
+                if real_count != self.processed_files:
+                    # Only update after both HOCR and PDF exist
+                    if self._verify_file_completion(self.ocr.current_file):
+                        self.processed_files = real_count
+                        progress = int((real_count / self.total_files) * 100) if self.total_files > 0 else 0
+                        self.overall_progress.setValue(progress)
+                        self.overall_progress_label.setText(f"Files Processed: {real_count}/{self.total_files}")
+                        logger.debug(f"Updated progress: {real_count}/{self.total_files}")
+                        QApplication.processEvents()
             
         except Exception as e:
             logger.error(f"Error in sync_progress: {e}")
 
-    def _check_real_progress(self):
-        """Direct monitoring of OCR progress"""
+    def _verify_file_completion(self, filepath):
+        """Verify both HOCR and PDF exist for the file"""
+        if not filepath:
+            return False
         try:
-            if not hasattr(self.ocr, '_processed_files'):
-                return
-
-            # Get actual count directly from OCR
-            actual_count = len(self.ocr._processed_files)
-            current_file = getattr(self.ocr, 'current_file', None)
-            
-            # Update if changed
-            if actual_count != self.processed_files:
-                self.processed_files = actual_count
-                self.max_processed = max(self.max_processed, actual_count)
-                
-                # Force progress update
-                progress = int((actual_count / self.total_files) * 100) if self.total_files > 0 else 0
-                self.overall_progress.setValue(progress)
-                self.overall_progress_label.setText(f"Files Processed: {actual_count}/{self.total_files}")
-                
-                # Log progress
-                logger.debug(f"Real progress: {actual_count}/{self.total_files}")
-            
-            # Update current file
-            if current_file:
-                self.current_file_label.setText(f"Processing: {Path(current_file).name}")
-            
-            QApplication.processEvents()
-            
+            path = Path(filepath)
+            # Check if both output files exist
+            hocr_exists = any(self.ocr.hocr_dir.rglob(f"{path.stem}*.hocr"))
+            pdf_exists = any(self.ocr.temp_dir.glob(f"*{path.stem}*.pdf"))
+            return hocr_exists and pdf_exists
         except Exception as e:
-            logger.error(f"Error checking progress: {e}")
+            logger.error(f"Error verifying file completion: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error verifying file completion: {e}")
+            return False
 
     def _start_processing(self):
-        # Add check for processing state
-        if self.current_worker and self.current_worker.is_running:
-            QMessageBox.warning(self, "Warning", "Processing already in progress")
-            return
-            
-        # Forcefully reset state before starting
-        self._reset_processing_state()
-        self.ocr.is_cancelled = False
-        self.ocr._force_stop = False
-        self.ocr._exit_event.clear()
-        self.ocr._should_exit.clear()
-        
+        """Start processing with improved error handling"""
         try:
-            # Reset all progress tracking
-            self.processed_files = 0
-            self.max_processed = 0
-            self.last_valid_progress = 0
-            self.processed_files_set.clear()
-            self.file_tracking['processed'].clear()
-            self.file_tracking['current'] = None
-            
-            # Get mode and path first
+            # Check if already processing
+            if self.current_worker and self.current_worker.is_running:
+                QMessageBox.warning(self, "Warning", "Processing already in progress")
+                return
+                
+            # Get processing parameters and count files first
             current_tab = self.tab_widget.currentIndex()
             mode, path = self._get_processing_params(current_tab)
+            self.total_files = self._get_total_files(path, mode)
             
-            # Pre-scan files for folder mode
-            if mode == 'folder':
-                # Get all files first
-                image_files = []
-                for ext in ['.tif', '.tiff', '.jpg', '.jpeg', '.png']:
-                    image_files.extend(list(Path(path).rglob(f'*{ext}')))
-                self.file_tracking['queued'] = set(str(p) for p in image_files)
-                self.total_files = len(self.file_tracking['queued'])
-                logger.info(f"Found {self.total_files} files to process")
-            else:
-                self.total_files = 1
-                self.file_tracking['queued'].add(str(path))
-            
-            # Reset other counters
+            # Reset state before starting
             self.processed_files = 0
             self.last_progress = 0
             self.max_processed = 0
+            self._last_displayed_file = None
             
-            # Check for output conflicts first
-            if not self._check_output_conflicts(path):
-                logger.info("Processing cancelled due to output conflicts")
-                return
-
-            # Create and setup worker
+            # Initialize progress display with 0/total first
+            self.current_file_label.setText("Starting processing...")
+            self.overall_progress_label.setText(f"Files Processed: 0/{self.total_files}")
+            self.overall_progress.setValue(0)
+            QApplication.processEvents()  # Force update
+            
+            # Reset OCR state
+            if hasattr(self, 'ocr'):
+                self.ocr.reset_state()
+                self.ocr._processed_files.clear()  # Ensure processed files is empty
+            
+            # Create worker and connect signals
             self.current_worker = OCRWorker(self.ocr, mode, path)
-            self.current_worker.signals.progress.connect(self._on_progress)
-            self.current_worker.signals.error.connect(self._handle_error)
-            self.current_worker.signals.cancelled.connect(self._on_cancelled)
-            self.current_worker.signals.finished.connect(self._process_finished)
-            logger.debug(f"Created OCR worker for mode: {mode}, path: {path}")
             
+            # Connect signals with exception handling
             try:
-                # Connect worker signals with error checking
-                signals = [
-                    (self.current_worker.signals.progress, self._update_overall_progress),
-                    (self.current_worker.signals.error, self._handle_error),
-                    (self.current_worker.signals.finished, self._process_finished),
-                    (self.current_worker.signals.cancelled, self._on_cancelled)
-                ]
+                # Connect all signals first - Fix: Changed _on_progress to _update_overall_progress
+                self.current_worker.signals.progress.connect(self._update_overall_progress)
+                self.current_worker.signals.error.connect(self._handle_error)
+                self.current_worker.signals.cancelled.connect(self._on_cancelled)
+                self.current_worker.signals.finished.connect(self._process_finished)
                 
-                for signal, handler in signals:
-                    try:
-                        signal.connect(handler)
-                    except Exception as e:
-                        logger.error(f"Failed to connect signal to {handler.__name__}: {e}")
-                        raise
-                        
-                logger.debug("Successfully connected worker signals")
+                # Update UI state
+                self.start_button.setEnabled(False)
+                self.cancel_button.setEnabled(True)
+                self.overall_progress.setValue(0)
+                
+                # Start monitoring
+                self.progress_monitor.start()
+                self.sync_timer.start()
+                
+                # Start processing
+                logger.info(f"Starting processing: mode={mode}, path={path}")
+                self.thread_pool.start(self.current_worker)
                 
             except Exception as e:
                 logger.error(f"Failed to connect worker signals: {e}")
-                logger.error(traceback.format_exc())
-                raise
-            
-            # Update UI state
-            self.start_button.setEnabled(False)
-            self.cancel_button.setEnabled(True)
-            self.overall_progress.setValue(0)
-            
-            # Start progress monitoring
-            self.progress_monitor.start()
-            
-            # Start processing
-            logger.info("Starting OCR processing")
-            self.thread_pool.start(self.current_worker)
-            
+                self._handle_error(f"Failed to start processing: {e}")
+                self.current_worker = None
+                
         except Exception as e:
             logger.error(f"Error starting processing: {e}", exc_info=True)
             self._handle_error(str(e))
-
-    def _on_progress(self, current_file, total_files, file_progress):
-        """Direct progress handler with improved sync"""
-        try:
-            # Always update if we have a valid count
-            if current_file is not None:
-                # Get real count from OCR for verification
-                if hasattr(self.ocr, '_processed_files'):
-                    real_count = len(self.ocr._processed_files)
-                    current_file = max(current_file, real_count)
-                
-                # Update progress
-                self.processed_files = current_file
-                self.max_processed = max(self.max_processed, current_file)
-                
-                # Force progress update
-                progress = int((current_file / total_files) * 100)
-                self.overall_progress.setValue(progress)
-                self.overall_progress_label.setText(
-                    f"Files Processed: {current_file}/{total_files}"
-                )
-                
-                # Update file display if changed
-                if hasattr(self.ocr, 'current_file'):
-                    current = self.ocr.current_file
-                    if current and current != self.file_tracking['current']:
-                        self.file_tracking['current'] = current
-                        self.current_file_label.setText(f"Processing: {Path(current).name}")
-                
-                logger.debug(f"Progress update: {current_file}/{total_files}")
-                
-            QApplication.processEvents()
-            
-        except Exception as e:
-            logger.error(f"Error in progress handler: {e}", exc_info=True)
 
     def _get_processing_params(self, tab_index: int) -> tuple:
         """Get processing mode and path based on selected tab"""
@@ -915,8 +822,10 @@ class MainWindow(QMainWindow):
                 raise ValueError("Please select an image file")
             if not self.single_output_path.text():
                 raise ValueError("Please select output directory")
-            self.ocr.output_base_dir = Path(self.single_output_path.text())
-            self.ocr.output_formats = output_formats  # Set output formats
+            # Use selected output directory
+            output_dir = Path(self.single_output_path.text())
+            self.ocr.set_output_directory(output_dir)
+            self.ocr.output_formats = output_formats
             return 'single', self.selected_paths['single']
             
         elif tab_index == 1:  # Folder
@@ -976,107 +885,138 @@ class MainWindow(QMainWindow):
         pass  # Simply log to file, not to GUI
 
     def _update_overall_progress(self, current_file, total_files, file_progress):
-        """Update progress with direct OCR sync"""
+        """Update progress with live file display"""
         try:
-            # Get real progress from OCR
-            real_count = len(getattr(self.ocr, '_processed_files', set()))
-            self.processed_files = max(real_count, self.processed_files)
+            # Update current file display first
+            if hasattr(self.ocr, 'current_file') and self.ocr.current_file:
+                current = Path(self.ocr.current_file).name
+                self.current_file_label.setText(f"Processing: {current}")
             
-            # Calculate progress
-            progress = int((self.processed_files / self.total_files) * 100)
-            self.overall_progress.setValue(progress)
-            self.overall_progress_label.setText(
-                f"Files Processed: {self.processed_files}/{self.total_files}"
-            )
+            # Update progress counts
+            self.processed_files = current_file
+            self.total_files = total_files if total_files > 0 else self.total_files
             
-            # Update file display
-            if hasattr(self.ocr, 'current_file'):
-                current = self.ocr.current_file
-                if current:
-                    self.current_file_label.setText(f"Processing: {Path(current).name}")
+            # Calculate and update progress
+            if self.total_files > 0:
+                progress = int((current_file / self.total_files) * 100)
+                self.overall_progress.setValue(progress)
+                self.overall_progress_label.setText(
+                    f"Files Processed: {current_file}/{self.total_files}"
+                )
             
-            logger.debug(f"Progress update from OCR: {self.processed_files}/{self.total_files}")
-            
-            # Force update
-            self.overall_progress.repaint()
+            # Force GUI update
             QApplication.processEvents()
             
         except Exception as e:
-            logger.error(f"Error updating progress: {e}", exc_info=True)
+            logger.error(f"Error updating progress: {e}")
 
     def _process_finished(self, success):
         """Handle process completion"""
         try:
-            # Stop sync timer
+            # Stop timers but keep current progress visible
             self.sync_timer.stop()
-            
-            # Stop progress monitoring
             self.progress_monitor.stop()
-            
-            # Force final progress update
-            if success and self.total_files > 0:
-                self.processed_files = self.total_files
-                self.overall_progress.setValue(100)
-                self.overall_progress_label.setText(
-                    f"Files Processed: {self.total_files}/{self.total_files}"
-                )
-                QApplication.processEvents()
-            
-            # Stop timers first
             self.update_timer.stop()
             self.progress_timer.stop()
             
-            # Show completion message before cleanup
+            # Keep progress visible while showing completion message
             if success and not self.ocr.is_cancelled:
+                # Show completion message and wait for user response
                 QMessageBox.information(self, "Success", "Processing completed successfully!")
             
-            # Reset state and cleanup
-            self._reset_processing_state()
+            # Only reset the state after user has seen completion message
+            self.start_button.setEnabled(True)
+            self.cancel_button.setEnabled(False)
+            self.current_file_label.setText("No file processing")
+            self.overall_progress_label.setText("Total Progress: 0/0") 
+            self.overall_progress.setValue(0)
+            
+            # Clear internal state
+            self.processed_files = 0
+            self.total_files = 0
+            self.last_progress = 0
+            self.file_tracking['current'] = None
+            self.file_tracking['processed'].clear()
+            
+            QApplication.processEvents()
             
         except Exception as e:
             logger.error(f"Error during process completion: {e}")
             self._reset_processing_state()
 
     def _update_hardware_info(self):
-        if hasattr(self, 'ocr') and self.ocr.device == "cuda":
-            self.device_label.setText(f"Processing Device: GPU")
-            
-            try:
-                if self.nvml_initialized:
-                    import pynvml
-                    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                    util_rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                    mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        """Update hardware info display with better error handling and GPU memory tracking"""
+        try:
+            if hasattr(self, 'ocr'):
+                device = getattr(self.ocr, 'device', 'cpu')  # Default to CPU if device not set
+                
+                # GPU Mode
+                if device == "cuda" and torch.cuda.is_available():
+                    self.device_label.setText("Processing Device: GPU")
                     
-                    gpu_util = util_rates.gpu if util_rates else 0
-                    used_gb = mem_info.used / 1024**3
-                    total_gb = mem_info.total / 1024**3
-                    
-                    self.cpu_label.setText(f"GPU Usage: {gpu_util}%")
-                    self.memory_label.setText(f"GPU Memory Allocated: {used_gb:.1f}MB/{total_gb:.1f}MB")
+                    try:
+                        # Try NVML first
+                        if self.nvml_initialized:
+                            import pynvml
+                            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                            util_rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                            
+                            gpu_util = util_rates.gpu if util_rates else 0
+                            used_mb = mem_info.used / (1024*1024)
+                            total_mb = mem_info.total / (1024*1024)
+                            
+                            self.cpu_label.setText(f"GPU Usage: {gpu_util}%")
+                            self.memory_label.setText(f"GPU Memory: {used_mb:.0f}MB/{total_mb:.0f}MB")
+                        
+                        # Try GPUtil as fallback
+                        else:
+                            import GPUtil
+                            gpus = GPUtil.getGPUs()
+                            if gpus:
+                                gpu = gpus[0]
+                                self.cpu_label.setText(f"GPU Usage: {gpu.load * 100:.1f}%")
+                                self.memory_label.setText(
+                                    f"GPU Memory: {gpu.memoryUsed:.0f}MB/{gpu.memoryTotal:.0f}MB"
+                                )
+                            else:
+                                raise RuntimeError("No GPU detected by GPUtil")
+                                
+                    except Exception:
+                        # Fallback to basic PyTorch info
+                        try:
+                            allocated = torch.cuda.memory_allocated(0) / (1024*1024)
+                            total = torch.cuda.get_device_properties(0).total_memory / (1024*1024)
+                            self.cpu_label.setText("GPU Usage: N/A")
+                            self.memory_label.setText(f"GPU Memory: {allocated:.0f}MB/{total:.0f}MB")
+                        except Exception as e:
+                            self.cpu_label.setText("GPU Usage: Error")
+                            self.memory_label.setText("GPU Memory: Error")
+                            logger.error(f"Failed to get GPU metrics: {e}")
+                
+                # CPU Mode
                 else:
-                    # Try GPUtil as fallback
-                    import GPUtil
-                    gpu = GPUtil.getGPUs()[0]  # Get first GPU
-                    
-                    self.cpu_label.setText(f"GPU Usage: {gpu.load * 100:.1f}%")
-                    self.memory_label.setText(f"GPU Memory Allocated: {gpu.memoryUsed:.1f}MB/{gpu.memoryTotal:.1f}MB")
-                    
-            except Exception as e:
-                logger.error(f"Error getting GPU metrics: {e}")
-                # Ultimate fallback to basic PyTorch info
-                if torch.cuda.is_available():
-                    used = torch.cuda.memory_allocated(0) / 1024**3
-                    total = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                    self.cpu_label.setText("GPU Usage: N/A")
-                    self.memory_label.setText(f"GPU Memory Allocated: {used:.1f}MB/{total:.1f}MB")
-        else:
-            # CPU metrics (unchanged)
-            self.device_label.setText("Processing Device: CPU")
-            cpu_percent = psutil.cpu_percent(interval=None)
-            self.cpu_label.setText(f"CPU Usage: {cpu_percent}%")
-            memory = psutil.virtual_memory()
-            self.memory_label.setText(f"Memory Usage: {memory.percent}%")
+                    self.device_label.setText("Processing Device: CPU")
+                    try:
+                        cpu_percent = psutil.cpu_percent(interval=None)
+                        memory = psutil.virtual_memory()
+                        self.cpu_label.setText(f"CPU Usage: {cpu_percent}%")
+                        self.memory_label.setText(f"Memory: {memory.percent}%")
+                    except Exception as e:
+                        logger.error(f"Failed to get CPU metrics: {e}")
+                        self.cpu_label.setText("CPU Usage: Error")
+                        self.memory_label.setText("Memory: Error")
+                        
+            else:
+                self.device_label.setText("Processing Device: Initializing...")
+                self.cpu_label.setText("Usage: N/A")
+                self.memory_label.setText("Memory: N/A")
+                
+        except Exception as e:
+            logger.error(f"Error in hardware monitoring: {e}")
+            self.device_label.setText("Device: Error")
+            self.cpu_label.setText("Usage: Error")
+            self.memory_label.setText("Memory: Error")
 
     def _handle_error(self, error_message: str):
         """Handle errors during processing"""
@@ -1244,3 +1184,40 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             pass
+
+    def _check_real_progress(self):
+        """Monitor actual progress by checking processed files"""
+        try:
+            if not hasattr(self.ocr, '_processed_files'):
+                return
+
+            # Get actual count from OCR
+            real_count = len(self.ocr._processed_files)
+            
+            # Update progress if count has changed
+            if real_count != self.processed_files:
+                self.processed_files = real_count
+                self.max_processed = max(self.max_processed, real_count)
+                
+                # Update progress display
+                if self.total_files > 0:
+                    progress = int((real_count / self.total_files) * 100)
+                    self.overall_progress.setValue(progress)
+                    self.overall_progress_label.setText(
+                        f"Files Processed: {real_count}/{self.total_files}"
+                    )
+                    
+                    # Log progress change
+                    logger.debug(f"Real progress update: {real_count}/{self.total_files}")
+            
+            # Update current file display
+            if hasattr(self.ocr, 'current_file') and self.ocr.current_file:
+                current = Path(self.ocr.current_file)
+                if current.name != getattr(self, '_last_displayed_file', None):
+                    self.current_file_label.setText(f"Processing: {current.name}")
+                    self._last_displayed_file = current.name
+            
+            QApplication.processEvents()
+            
+        except Exception as e:
+            logger.error(f"Error checking real progress: {e}")
