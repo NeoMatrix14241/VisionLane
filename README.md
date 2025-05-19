@@ -26,6 +26,17 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - 🖥️ PyQt6-based GUI interface
 - 📊 Real-time processing status and GPU metrics
 - 🔍 High-accuracy text recognition using DocTR
+- 🌙 Dark mode, light mode, and night mode themes with system default support
+- 🧩 User-selectable DocTR detection and recognition models with auto-download if missing
+- ⚙️ Configurable DPI, output format, and compression options (JPEG, JPEG2000, LZW, PNG)
+- 🗜️ PDF compression with Ghostscript auto-detection (PATH or Program Files, highest version auto-selected)
+- 🛠️ Performance tuning: adjustable thread count and timeouts
+- 🧹 Safe resource cleanup and robust error handling
+- 📂 Remembers last used input/output directories and settings
+- 🖼️ Real-time progress display with current file and processed count
+- 🔒 Settings saved to config.ini for persistent preferences
+- 🧭 Guided dialogs for missing dependencies (e.g., Ghostscript "Learn More" button)
+- 📝 Logging to file for troubleshooting
 
 ## Requirements
 
@@ -48,7 +59,7 @@ The following features and improvements are planned for future releases:
 ### 📁 File Handling Enhancements
 - [ ] Add option to archive processed files  
   _→ Automatically move completed input files to a separate folder_
-- [ ] Add compression function for output PDFs  
+- [x] Add compression function for output PDFs  
   _→ Preserve searchable text while applying JPEG-based compression_
 - [x] Fix where it suddenly creates output folder in the repository when running  
   _→ It remains there ever since I started making it as CLI based OCR processor_
@@ -56,7 +67,14 @@ The following features and improvements are planned for future releases:
 ### 🎨 UI/UX Features
 - [x] Add dark mode toggle and various bug fixes  
   _→ Supports system default, with manual switch option_  
-  _→ Includes various bug fixes to the GUI also_  
+  _→ Includes various bug fixes to the GUI also_
+- [x] Add night mode and improved theme switching
+- [x] Show real-time progress and current file being processed
+- [x] Add "Unavailable: Learn More?" button for missing Ghostscript with helpful dialog
+- [x] Improved error dialogs and resource cleanup
+- [x] Save and restore all user settings (including last-used paths, models, and compression options)
+- [x] Auto-detect Ghostscript in PATH and Program Files (uses highest version found)
+- [x] Robust logging to file for all sessions
 
 ## Installation
 

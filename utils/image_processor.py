@@ -2,7 +2,6 @@ import multiprocessing as mp
 from PIL import Image
 import numpy as np
 import logging
-from pathlib import Path
 import queue
 
 logger = logging.getLogger(__name__)

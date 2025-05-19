@@ -8,22 +8,19 @@ from doctr.models import ocr_predictor
 from ocrmypdf.hocrtransform import HocrTransform
 from PIL import Image
 import warnings
-from datetime import datetime, UTC
+from datetime import datetime
 from PyPDF2 import PdfMerger
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from multiprocessing import cpu_count, get_context
+from multiprocessing import get_context
 import psutil
 import torch
-import cv2
 import gc
-import numpy as np
 import time
 import sys
 import threading
 import tempfile
 import shutil
 from utils.thread_killer import ThreadKiller
-from utils.image_processor import ImageProcessor
 from utils.pypdfcompressor import compress_pdf  # Add this import
 
 # Disable PIL decompression bomb warning

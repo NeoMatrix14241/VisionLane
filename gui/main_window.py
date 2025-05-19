@@ -1,13 +1,12 @@
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QPushButton, 
                            QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, 
-                           QTextEdit, QComboBox, QFileDialog, QMessageBox,
+                           QComboBox, QFileDialog, QMessageBox,
                            QLineEdit, QDialogButtonBox, QSpinBox, QCheckBox,
                            QFormLayout, QDialog, QProgressDialog, QSlider)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QThreadPool
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtCore import Qt, QTimer, QThreadPool
+from PyQt6.QtGui import QIcon
 import logging
 import sys
-import sysconfig
 import traceback
 import psutil
 from pathlib import Path
@@ -16,7 +15,6 @@ import gc
 import torch
 import time
 import configparser
-import doctr.models as doctr_models
 import shutil  # Add this import
 
 # Add project root to path
@@ -28,7 +26,6 @@ if str(project_root) not in sys.path:
 from ocr_processor import OCRProcessor
 from .processing_thread import OCRWorker
 from utils.process_manager import ProcessManager
-from utils.safe_logger import SafeLogHandler
 
 logger = logging.getLogger(__name__)
 
@@ -915,12 +912,20 @@ class MainWindow(QMainWindow):
                 return False, None
 
         def show_ghostscript_dialog():
-            QMessageBox.information(
-                self,
-                "Ghostscript Required",
-                "PDF compression requires Ghostscript (gswin64c.exe or gs) to be installed and available in your system PATH.\n\n"
-                "Please install Ghostscript and ensure it is accessible from the command line."
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Ghostscript Required")
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setTextFormat(Qt.TextFormat.RichText)
+            msg.setText(
+                "PDF compression requires Ghostscript (gswin64c.exe or gs) to be installed and available in your system PATH.<br><br>"
+                "Please install Ghostscript and ensure it is accessible from the command line.<br><br>"
+                "Download Ghostscript here:<br>"
+                "<a href='https://www.ghostscript.com/releases/gsdnld.html'>https://www.ghostscript.com/releases/gsdnld.html</a>"
             )
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            # Enable clickable links
+            msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            msg.exec()
 
         self.compression_info_button.clicked.connect(show_ghostscript_dialog)
 
@@ -1855,10 +1860,19 @@ class MainWindow(QMainWindow):
             <p>A powerful OCR engine built with <a href='https://github.com/mindee/doctr'>DocTR</a> for document processing.</p>
             <p><b>Features:</b></p>
             <ul>
-                <li>Supports multiple image formats (JPG, PNG, TIFF, etc.)</li>
+                <li>Supports multiple image formats (JPG, PNG, TIFF, PDF, etc.)</li>
                 <li>Exports searchable PDF and HOCR</li>
                 <li>Batch processing for folders</li>
                 <li>GPU acceleration when available</li>
+                <li>Dark, light, and night mode themes</li>
+                <li>User-selectable DocTR detection and recognition models (auto-download if missing)</li>
+                <li>Configurable DPI, output format, and PDF compression (JPEG, JPEG2000, LZW, PNG)</li>
+                <li>Ghostscript auto-detection (PATH or Program Files, highest version used)</li>
+                <li>Performance tuning: thread count and timeouts</li>
+                <li>Remembers last used paths and settings</li>
+                <li>Real-time progress and current file display</li>
+                <li>Robust error handling and safe resource cleanup</li>
+                <li>Logging to file for troubleshooting</li>
             </ul>
             <p><b>Author:</b> <a href='https://github.com/NeoMatrix14241'>NeoMatrix14241</a></p>
             <p><i>Visit the <a href='https://github.com/NeoMatrix14241/VisionLane'>GitHub repository</a> for updates.</i></p>

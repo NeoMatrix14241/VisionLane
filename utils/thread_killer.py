@@ -1,9 +1,7 @@
 import threading
 import ctypes
-import inspect
 import logging
 import queue
-from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 

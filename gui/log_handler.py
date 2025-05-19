@@ -1,8 +1,4 @@
 import logging
-from pathlib import Path
-import tempfile
-import os
-from datetime import datetime
 from collections import deque
 
 class BufferedLogHandler(logging.Handler):

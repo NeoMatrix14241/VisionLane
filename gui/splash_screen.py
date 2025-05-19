@@ -2,7 +2,7 @@
 
 from PyQt6.QtWidgets import QSplashScreen, QProgressBar, QVBoxLayout, QLabel, QWidget, QApplication
 from PyQt6.QtCore import Qt, QSize, QCoreApplication
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont
+from PyQt6.QtGui import QPixmap, QPainter, QColor
 import time
 
 class SplashScreen(QSplashScreen):

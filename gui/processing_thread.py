@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QRunnable, QObject, pyqtSignal, QThreadPool
+from PyQt6.QtCore import QRunnable, QObject, pyqtSignal
 import logging
 from pathlib import Path
 import threading
@@ -6,7 +6,6 @@ import signal
 import time
 from PyQt6.QtWidgets import QApplication
 from utils.process_manager import ProcessManager
-from utils.thread_killer import ThreadKiller
 from utils.safe_logger import SafeLogHandler
 import multiprocessing as mp
 import numpy as np

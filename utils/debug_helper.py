@@ -3,7 +3,6 @@ import logging
 import traceback
 from pathlib import Path
 from datetime import datetime
-import os
 import threading
 import psutil
 import torch
