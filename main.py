@@ -303,6 +303,7 @@ def main(app, splash):
 
 
 if __name__ == '__main__':
+    freeze_support()
     try:
         # Initialize app and show splash
         app, fast_splash = initialize_app()

@@ -336,12 +336,19 @@ class PDFProcessor:
 
             # Execute compression
             self.log_with_timestamp(f"Starting compression with command: {' '.join(gs_call)}", thread_name=thread_name)
-            process = subprocess.run(
-                ' '.join(gs_call),  # Join command as string
-                shell=True,  # Use shell to handle quoted paths
+            # --- PATCH: Suppress flashing window on Windows ---
+            run_kwargs = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                universal_newlines=True
+                universal_newlines=True,
+                shell=True
+            )
+            import sys
+            if sys.platform.startswith("win"):
+                run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            process = subprocess.run(
+                ' '.join(gs_call),
+                **run_kwargs
             )
 
             if process.returncode == 0 and os.path.exists(output_path):

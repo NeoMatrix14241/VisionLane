@@ -674,7 +674,7 @@ class MainWindow(QMainWindow):
         def create_tab(title, select_btn_text):
             widget = QWidget()
             layout = QVBoxLayout(widget)
-            layout.setSpacing(5)
+            layout.setSpacing(15)
             layout.setContentsMargins(10, 10, 10, 10)
 
             # Input selection

@@ -154,24 +154,6 @@ try:
 except ImportError:
     print("Warning: ocrmypdf package not found!")
 
-# Add Poppler binaries for pdf2image if on Windows
-if sys.platform.startswith('win'):
-    # Check if POPPLER_PATH environment variable exists
-    poppler_path = os.environ.get('POPPLER_PATH')
-    if poppler_path and os.path.exists(poppler_path):
-        datas.append((poppler_path, 'poppler'))
-    else:
-        print("Warning: POPPLER_PATH not set or directory doesn't exist!")
-
-# Add Tesseract binaries for OCRmyPDF if on Windows
-if sys.platform.startswith('win'):
-    # Check if TESSERACT_PATH environment variable exists
-    tesseract_path = os.environ.get('TESSERACT_PATH')
-    if tesseract_path and os.path.exists(tesseract_path):
-        datas.append((tesseract_path, 'tesseract'))
-    else:
-        print("Warning: TESSERACT_PATH not set or directory doesn't exist!")
-
 # Collect all QT plugins
 from PyInstaller.utils.hooks import collect_all
 
@@ -182,6 +164,65 @@ for module in ['PyQt6']:
         hiddenimports.extend(hiddenimports_temp)
     except Exception as e:
         print(f"Warning: Error collecting {module}: {e}")
+
+# Add more explicit hidden imports for Windows compatibility and PyQt6 plugins
+if sys.platform.startswith('win'):
+    # Ensure PyQt6 plugins are included (platforms, imageformats, etc.)
+    from PyInstaller.utils.hooks import collect_dynamic_libs
+    pyqt6_plugins = [
+        ('PyQt6', 'Qt6/plugins/platforms'),
+        ('PyQt6', 'Qt6/plugins/imageformats'),
+        ('PyQt6', 'Qt6/plugins/printsupport'),
+        ('PyQt6', 'Qt6/plugins/styles'),
+    ]
+    for mod, subdir in pyqt6_plugins:
+        try:
+            datas += collect_data_files(mod, subdir=subdir)
+        except Exception as e:
+            print(f"Warning: Could not collect {mod} {subdir}: {e}")
+
+    # Add tcl/tk DLLs if needed (for PIL, image processing)
+    import glob
+    tcl_dirs = [
+        os.path.join(sys.base_prefix, 'DLLs'),
+        os.path.join(sys.base_prefix, 'Library', 'bin'),
+    ]
+    for tcl_dir in tcl_dirs:
+        if os.path.exists(tcl_dir):
+            for dll in glob.glob(os.path.join(tcl_dir, 'tcl*.dll')) + glob.glob(os.path.join(tcl_dir, 'tk*.dll')):
+                datas.append((dll, '.'))
+
+# Add Windows-specific binaries for Ghostscript, Poppler, Tesseract if available
+if sys.platform.startswith('win'):
+    # Ghostscript
+    gs_path = os.environ.get('GHOSTSCRIPT_PATH')
+    if gs_path and os.path.exists(gs_path):
+        datas.append((gs_path, 'ghostscript'))
+    else:
+        # Try common install locations
+        for base in [
+            r"C:\Program Files\gs",
+            r"C:\Program Files (x86)\gs"
+        ]:
+            if os.path.exists(base):
+                for sub in os.listdir(base):
+                    exe = os.path.join(base, sub, "bin", "gswin64c.exe")
+                    if os.path.exists(exe):
+                        datas.append((exe, 'ghostscript'))
+                        break
+
+# Add config.ini as a data file if present
+if os.path.exists('config.ini'):
+    datas.append(('config.ini', '.'))
+
+# Add icon.ico as a data file if present
+if os.path.exists('icon.ico'):
+    datas.append(('icon.ico', '.'))
+
+# Add README.md and LICENSE for completeness
+for docfile in ['README.md', 'LICENSE']:
+    if os.path.exists(docfile):
+        datas.append((docfile, '.'))
 
 # Add environment variables to help torch find its libraries
 os.environ['PYTHONIOENCODING'] = 'utf-8'

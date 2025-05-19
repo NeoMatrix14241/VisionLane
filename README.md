@@ -132,4 +132,15 @@ python main.py
 - If archiving is not enabled or the archive path is not specified, input files are not moved.
 - Proper error handling is provided if the archive directory is missing or invalid.
 
+## Troubleshooting
+
+### Random Flashing Window Appears
+
+If you see a random flashing window (such as a command prompt or terminal) briefly appear during processing, especially in the built (PyInstaller) version, this is expected on Windows. It is caused by background subprocesses (such as Ghostscript for PDF compression, or CUDA/PyTorch initialization) that may momentarily open a console window.
+
+**How to minimize or avoid:**
+- This release now suppresses the Ghostscript window when compressing PDFs on Windows.
+- If you still see a flashing window, ensure you are using the latest version.
+- The window is cosmetic and does not affect OCR results or stability.
+
 ---

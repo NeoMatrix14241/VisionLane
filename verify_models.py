@@ -2,7 +2,7 @@ from pathlib import Path
 import doctr.models as models
 
 cache_dir = Path.home() / ".cache" / "doctr" / "models"
-required_models = ["db_resnet50.pt", "crnn_vgg16_bn.pt"]
+required_models = ["db_resnet50.pt", "parseq.pt"]
 
 # Check for each model
 def model_exists(name):
@@ -16,10 +16,10 @@ if not model_exists("db_resnet50"):
 else:
     print("db_resnet50 model already present.")
 
-if not model_exists("crnn_vgg16_bn"):
-    print("Downloading crnn_vgg16_bn (text recognition)...")
-    models.recognition.crnn_vgg16_bn(pretrained=True)
+if not model_exists("parseq"):
+    print("Downloading parseq (text recognition)...")
+    models.recognition.parseq(pretrained=True)
 else:
-    print("crnn_vgg16_bn model already present.")
+    print("parseq model already present.")
 
 print("All required DocTR models are present.")
