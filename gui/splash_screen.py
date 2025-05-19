@@ -84,6 +84,9 @@ class SplashScreen(QSplashScreen):
         self.content.updateGeometry()
         QCoreApplication.processEvents()
 
+        # Prevent splash from closing automatically by keeping a reference
+        self._keep_alive = True
+
     def update_status(self, message: str, progress: int):
         """Update status message and progress bar"""
         self.status_label.setText(message)
@@ -101,7 +104,15 @@ class SplashScreen(QSplashScreen):
         
         # Short delay for visual transition
         time.sleep(0.1)
+        self._keep_alive = False  # Allow splash to close
         super().finish(window)
+
+    def closeEvent(self, event):
+        # Prevent closing if _keep_alive is True
+        if getattr(self, "_keep_alive", False):
+            event.ignore()
+        else:
+            super().closeEvent(event)
 
     def paintEvent(self, event):
         """Custom paint event to draw background and border"""

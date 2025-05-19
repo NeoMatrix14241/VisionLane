@@ -16,6 +16,7 @@ import gc
 import torch
 import time
 import configparser
+import doctr.models as doctr_models
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -137,9 +138,10 @@ class MainWindow(QMainWindow):
             self.config_path = self.project_root / "config.ini"
             self.config = configparser.ConfigParser()
             self._load_config()
-            
             self._create_ui()
-            
+            # --- Ensure config.ini is created on first startup if missing ---
+            if not self.config_path.exists():
+                self._save_config()
             # Initialize OCR model
             QTimer.singleShot(0, lambda: self._delayed_init())
             
@@ -153,8 +155,13 @@ class MainWindow(QMainWindow):
 
     def _load_config(self):
         """Load settings from config.ini"""
+        # Always use hardcoded defaults if config.ini is missing or does not contain the keys
+        detection_model = "db_resnet50"
+        recognition_model = "parseq"
         if self.config_path.exists():
             self.config.read(self.config_path, encoding="utf-8")
+            detection_model = self.config.get("General", "detection_model", fallback=detection_model)
+            recognition_model = self.config.get("General", "recognition_model", fallback=recognition_model)
         # DPI
         dpi = self.config.get("General", "dpi", fallback="300")
         # Output format
@@ -172,8 +179,8 @@ class MainWindow(QMainWindow):
         thread_count = self.config.getint("Performance", "thread_count", fallback=psutil.cpu_count(logical=True))
         operation_timeout = self.config.getint("Performance", "operation_timeout", fallback=600)
         chunk_timeout = self.config.getint("Performance", "chunk_timeout", fallback=60)
+        # Models: detection_model and recognition_model already set above
 
-        # Store for later use in UI creation
         self._config_values = {
             "dpi": dpi,
             "output_format": output_format,
@@ -187,6 +194,8 @@ class MainWindow(QMainWindow):
             "thread_count": thread_count,
             "operation_timeout": operation_timeout,
             "chunk_timeout": chunk_timeout,
+            "detection_model": detection_model,
+            "recognition_model": recognition_model,
         }
 
     def _create_ui(self):
@@ -241,6 +250,21 @@ class MainWindow(QMainWindow):
         if hasattr(self, "ocr"):
             self.ocr.operation_timeout = v["operation_timeout"]
             self.ocr.chunk_timeout = v["chunk_timeout"]
+        # Detection/Recognition model dropdowns
+        idx = self.det_model_combo.findData(v.get("detection_model", "db_resnet50"))
+        if idx >= 0:
+            self.det_model_combo.setCurrentIndex(idx)
+        else:
+            idx = self.det_model_combo.findData("db_resnet50")
+            if idx >= 0:
+                self.det_model_combo.setCurrentIndex(idx)
+        idx = self.rec_model_combo.findData(v.get("recognition_model", "parseq"))
+        if idx >= 0:
+            self.rec_model_combo.setCurrentIndex(idx)
+        else:
+            idx = self.rec_model_combo.findData("parseq")
+            if idx >= 0:
+                self.rec_model_combo.setCurrentIndex(idx)
 
     def _save_config(self):
         """Save all GUI settings to config.ini"""
@@ -254,6 +278,8 @@ class MainWindow(QMainWindow):
         self.config.set("General", "dpi", self.dpi_combo.currentText())
         self.config.set("General", "output_format", self.format_combo.currentText())
         self.config.set("General", "theme_mode", self.theme_mode)
+        self.config.set("General", "detection_model", self.det_model_combo.currentData())
+        self.config.set("General", "recognition_model", self.rec_model_combo.currentData())
         # Paths
         self.config.set("Paths", "single", str(self.selected_paths['single'] or ""))
         self.config.set("Paths", "folder", str(self.selected_paths['folder'] or ""))
@@ -749,21 +775,232 @@ class MainWindow(QMainWindow):
         return {"images": images, "pdfs": pdfs}
 
     def _create_options_section(self, parent_layout):
-        options_layout = QHBoxLayout()
-        
-        # DPI Selection
+        # DPI + Output Format row
+        options_layout1 = QHBoxLayout()
         self.dpi_combo = QComboBox()
         self.dpi_combo.addItems(["300", "600", "900"])
-        options_layout.addWidget(QLabel("DPI:"))
-        options_layout.addWidget(self.dpi_combo)
+        options_layout1.addWidget(QLabel("DPI:"))
+        options_layout1.addWidget(self.dpi_combo)
 
-        # Output Format - Updated to include HOCR
         self.format_combo = QComboBox()
         self.format_combo.addItems(["PDF", "HOCR", "PDF+HOCR"])
-        options_layout.addWidget(QLabel("Output Format:"))
-        options_layout.addWidget(self.format_combo)
+        options_layout1.addWidget(QLabel("Output Format:"))
+        options_layout1.addWidget(self.format_combo)
+        parent_layout.addLayout(options_layout1)
 
-        parent_layout.addLayout(options_layout)
+        # Detection Model + Recognition Model row
+        options_layout2 = QHBoxLayout()
+        self.det_model_combo = QComboBox()
+        options_layout2.addWidget(QLabel("Detection Model:"))
+        options_layout2.addWidget(self.det_model_combo)
+
+        self.rec_model_combo = QComboBox()
+        options_layout2.addWidget(QLabel("Recognition Model:"))
+        options_layout2.addWidget(self.rec_model_combo)
+        parent_layout.addLayout(options_layout2)
+
+        # Only download the default models from config.ini at startup
+        self._populate_model_dropdowns(download_missing="startup")
+        self.det_model_combo.currentIndexChanged.connect(self._on_det_model_change)
+        self.rec_model_combo.currentIndexChanged.connect(self._on_rec_model_change)
+
+    def _populate_model_dropdowns(self, download_missing=False):
+        """
+        Populate detection/recognition model dropdowns with available models and download status.
+        If download_missing == "startup", only download the default models from config.ini or hardcoded defaults.
+        """
+        det_models = [
+            "db_resnet50",
+            "linknet_resnet18",
+            "linknet_resnet34",
+            "linknet_resnet50",
+            "db_mobilenet_v3_large",
+            "fast_tiny",
+            "fast_small",
+            "fast_base",
+        ]
+        rec_models = [
+            "parseq",
+            "crnn_vgg16_bn",
+            "crnn_mobilenet_v3_small",
+            "crnn_mobilenet_v3_large",
+            "sar_resnet31",
+            "master",
+            "vitstr_small",
+            "vitstr_base",
+        ]
+        from pathlib import Path
+        cache_dir = Path.home() / ".cache" / "doctr" / "models"
+        def model_exists(name):
+            # Only match the model name exactly (not startswith), to avoid duplicates
+            return any(p.name.split('-')[0] == name for p in cache_dir.glob("*.pt"))
+
+        # --- Only download the default models from config.ini or hardcoded defaults at startup ---
+        if download_missing == "startup":
+            det_model = self._config_values.get("detection_model") or "db_resnet50"
+            rec_model = self._config_values.get("recognition_model") or "parseq"
+            import doctr.models as doctr_models
+            if not model_exists(det_model):
+                try:
+                    if hasattr(doctr_models.detection, det_model):
+                        getattr(doctr_models.detection, det_model)(pretrained=True)
+                except Exception:
+                    pass
+            if not model_exists(rec_model):
+                try:
+                    if hasattr(doctr_models.recognition, rec_model):
+                        getattr(doctr_models.recognition, rec_model)(pretrained=True)
+                except Exception:
+                    pass
+        # --- Download all models if download_missing is True ---
+        elif download_missing is True:
+            import doctr.models as doctr_models
+            for key in det_models:
+                if not model_exists(key):
+                    try:
+                        getattr(doctr_models.detection, key)(pretrained=True)
+                    except Exception:
+                        pass
+            for key in rec_models:
+                if not model_exists(key):
+                    try:
+                        getattr(doctr_models.recognition, key)(pretrained=True)
+                    except Exception:
+                        pass
+
+        # --- Prevent duplicate items in dropdowns ---
+        self.det_model_combo.clear()
+        self.rec_model_combo.clear()
+
+        self._det_model_needs_download = {}
+        self._rec_model_needs_download = {}
+
+        # Add detection models (no duplicates)
+        added_det = set()
+        for key in det_models:
+            if key in added_det:
+                continue
+            added_det.add(key)
+            exists = model_exists(key)
+            self._det_model_needs_download[key] = not exists
+            display = key + ("" if exists else " ⬇️")
+            self.det_model_combo.addItem(display, key)
+
+        # Add recognition models (no duplicates)
+        added_rec = set()
+        for key in rec_models:
+            if key in added_rec:
+                continue
+            added_rec.add(key)
+            exists = model_exists(key)
+            self._rec_model_needs_download[key] = not exists
+            display = key + ("" if exists else " ⬇️")
+            self.rec_model_combo.addItem(display, key)
+
+        # Remove any duplicate entries by checking all items after adding
+        def remove_duplicates(combo):
+            seen = set()
+            indices_to_remove = []
+            for i in range(combo.count()):
+                data = combo.itemData(i)
+                if data in seen:
+                    indices_to_remove.append(i)
+                else:
+                    seen.add(data)
+            # Remove from end to start to avoid shifting indices
+            for i in reversed(indices_to_remove):
+                combo.removeItem(i)
+        remove_duplicates(self.det_model_combo)
+        remove_duplicates(self.rec_model_combo)
+
+        # Set default selection to db_resnet50 and parseq if present
+        det_idx = self.det_model_combo.findData(self._config_values.get("detection_model", "db_resnet50"))
+        if det_idx < 0:
+            det_idx = self.det_model_combo.findData("db_resnet50")
+        if det_idx >= 0:
+            self.det_model_combo.setCurrentIndex(det_idx)
+        rec_idx = self.rec_model_combo.findData(self._config_values.get("recognition_model", "parseq"))
+        if rec_idx < 0:
+            rec_idx = self.rec_model_combo.findData("parseq")
+        if rec_idx >= 0:
+            self.rec_model_combo.setCurrentIndex(rec_idx)
+
+        # Connect to custom handler for download logic
+        try:
+            self.det_model_combo.currentIndexChanged.disconnect()
+        except Exception:
+            pass
+        try:
+            self.rec_model_combo.currentIndexChanged.disconnect()
+        except Exception:
+            pass
+        self.det_model_combo.currentIndexChanged.connect(self._on_det_model_change)
+        self.rec_model_combo.currentIndexChanged.connect(self._on_rec_model_change)
+
+    def _on_det_model_change(self, idx):
+        key = self.det_model_combo.itemData(idx)
+        # Only prompt/download for the selected detection model, not all
+        if self._det_model_needs_download.get(key, False):
+            self._download_model_no_dialog(key, "detection")
+            # After download, refresh dropdowns to update icon
+            self._populate_model_dropdowns(download_missing=False)
+            # Set selection back to the just-downloaded model
+            idx_new = self.det_model_combo.findData(key)
+            if idx_new >= 0:
+                self.det_model_combo.blockSignals(True)
+                self.det_model_combo.setCurrentIndex(idx_new)
+                self.det_model_combo.blockSignals(False)
+        self._on_model_change()
+
+    def _on_rec_model_change(self, idx):
+        key = self.rec_model_combo.itemData(idx)
+        # Only prompt/download for the selected recognition model, not all
+        if self._rec_model_needs_download.get(key, False):
+            self._download_model_no_dialog(key, "recognition")
+            # After download, refresh dropdowns to update icon
+            self._populate_model_dropdowns(download_missing=False)
+            # Set selection back to the just-downloaded model
+            idx_new = self.rec_model_combo.findData(key)
+            if idx_new >= 0:
+                self.rec_model_combo.blockSignals(True)
+                self.rec_model_combo.setCurrentIndex(idx_new)
+                self.rec_model_combo.blockSignals(False)
+        self._on_model_change()
+
+    # Add this method for compatibility with model change handlers
+    def _on_model_change(self, *args, **kwargs):
+        """Update OCR processor with current model selections."""
+        if hasattr(self, "ocr") and self.ocr:
+            det_model = self.det_model_combo.currentData()
+            rec_model = self.rec_model_combo.currentData()
+            self.ocr.set_models(det_model, rec_model)
+
+    def _download_model_no_dialog(self, model_key, model_type):
+        """
+        Download the specified model without any confirmation or completion dialogs.
+        Show a progress dialog only while downloading.
+        """
+        progress = QProgressDialog(
+            f"Downloading {model_key}...", None, 0, 0, self
+        )
+        progress.setWindowTitle("Downloading Model")
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+        QApplication.processEvents()
+        try:
+            import doctr.models as doctr_models
+            if model_type == "detection":
+                getattr(doctr_models.detection, model_key)(pretrained=True)
+            else:
+                getattr(doctr_models.recognition, model_key)(pretrained=True)
+            progress.setValue(1)
+            QApplication.processEvents()
+        except Exception as e:
+            QMessageBox.critical(self, "Download Failed", f"Failed to download model '{model_key}':\n{e}")
+        finally:
+            progress.close()
 
     def _create_status_section(self, parent_layout):
         """Create minimal status section with file status and overall progress"""
@@ -1506,8 +1743,15 @@ class MainWindow(QMainWindow):
     def _delayed_init(self):
         """Initialize heavy components after window is shown"""
         try:
-            # Initialize OCR processor without creating directories
-            self.ocr = OCRProcessor()  # No output_base_dir parameter
+            # Only download the default models from config.ini or hardcoded defaults at startup
+            self._populate_model_dropdowns(download_missing="startup")
+            # Initialize OCR processor with selected models from config.ini or hardcoded defaults
+            det_model = self._config_values.get("detection_model") or "db_resnet50"
+            rec_model = self._config_values.get("recognition_model") or "parseq"
+            self.ocr = OCRProcessor(
+                detection_model=det_model,
+                recognition_model=rec_model
+            )
             self._setup_logging()
             self._setup_file_logging()
             

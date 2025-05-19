@@ -38,11 +38,11 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 The following features and improvements are planned for future releases:
 
 ### 🔧 Functional Improvements
-- [ ] Fix initialization of models if not found after build  
+- [x] Fix initialization of models if not found after build  
   _→ Automatically download or notify if models are missing in cache directory (`C:\Users\%USERNAME%\.doctr\cache\*.pt`)_
-- [ ] Add custom selection for DocTR text detection and recognition models  
+- [x] Add custom selection for DocTR text detection and recognition models  
   _→ User-selectable models for more flexibility and accuracy tuning_
-- [ ] Implement a config file to persist user settings  
+- [x] Implement a config file to persist user settings  
   _→ Save UI preferences, text detection and text recognition model selections, input/output/archive options, select processor if CPU or GPU etc._
 
 ### 📁 File Handling Enhancements
@@ -54,7 +54,7 @@ The following features and improvements are planned for future releases:
   _→ It remains there ever since I started making it as CLI based OCR processor_
 
 ### 🎨 UI/UX Features
-- [ ] Add dark mode toggle and various bug fixes  
+- [x] Add dark mode toggle and various bug fixes  
   _→ Supports system default, with manual switch option_  
   _→ Includes various bug fixes to the GUI also_  
 

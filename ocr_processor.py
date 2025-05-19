@@ -113,13 +113,11 @@ def _check_gpu_support():
     return True, "GPU(s) supported", gpu_info
 
 class OCRProcessor:
-    def __init__(self, output_base_dir: str = None, output_formats: List[str] = ["pdf"]):
-        """
-        Initialize OCR processor with output directories and formats
-        Args:
-            output_base_dir: Base directory for outputs
-            output_formats: List of formats to output ("pdf", "hocr", or ["pdf", "hocr"] for both)
-        """
+    def __init__(self, output_base_dir: str = None, output_formats: List[str] = ["pdf"], detection_model: str = "db_resnet50", recognition_model: str = "crnn_vgg16_bn"):
+        # Set detection/recognition models FIRST
+        self.detection_model = detection_model
+        self.recognition_model = recognition_model
+        
         # Initialize paths but don't create directories yet
         self.output_base_dir = None
         self.pdf_dir = None
@@ -239,26 +237,42 @@ class OCRProcessor:
                 torch.backends.cudnn.benchmark = True
                 torch.cuda.empty_cache()
             
-            self.model = ocr_predictor(
-                det_arch='db_resnet50',
-                reco_arch='crnn_vgg16_bn',
-                pretrained=True,
-                assume_straight_pages=True
-            ).to(self.device)
-            
-            # Set model to evaluation mode
-            self.model.eval()
-            
-            if self.device == 'cuda':
-                torch.cuda.synchronize()
-                logger.info(f"GPU Memory Usage: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
-                logger.info(f"GPU Memory Cached: {torch.cuda.memory_reserved() / 1024**2:.2f}MB")
+            self._init_model()
             
             logger.info(f"OCR model initialization successful (using {self.device.upper()})")
             
         except Exception as e:
             logger.error(f"Failed to load OCR model: {str(e)}")
             raise
+
+    def _init_model(self):
+        """(Re)initialize the OCR model with current detection/recognition models"""
+        import doctr.models as doctr_models
+        self.model = ocr_predictor(
+            det_arch=self.detection_model,
+            reco_arch=self.recognition_model,
+            pretrained=True,
+            assume_straight_pages=True
+        ).to(self.device)
+        self.model.eval()
+        if self.device == 'cuda':
+            torch.cuda.synchronize()
+            logger.info(f"GPU Memory Usage: {torch.cuda.memory_allocated() / 1024**2:.2f}MB")
+            logger.info(f"GPU Memory Cached: {torch.cuda.memory_reserved() / 1024**2:.2f}MB")
+        logger.info(f"OCR model initialized: det={self.detection_model}, reco={self.recognition_model}")
+
+    def set_models(self, detection_model: str, recognition_model: str):
+        """Set detection and recognition models and reinitialize if changed"""
+        changed = False
+        if detection_model and detection_model != self.detection_model:
+            self.detection_model = detection_model
+            changed = True
+        if recognition_model and recognition_model != self.recognition_model:
+            self.recognition_model = recognition_model
+            changed = True
+        if changed:
+            logger.info(f"Switching OCR models: det={self.detection_model}, reco={self.recognition_model}")
+            self._init_model()
 
     def set_output_directory(self, path: Path):
         """Set and create output directory structure"""

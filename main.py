@@ -176,30 +176,44 @@ def main(app, splash):
         QCoreApplication.processEvents()
 
         import doctr.models as doctr_models
-        import getpass
+        import configparser
+
+        # Read config.ini for default models, fallback to hardcoded defaults if missing
+        config_path = Path(__file__).parent / "config.ini"
+        config = configparser.ConfigParser()
+        config.read(config_path, encoding="utf-8")
+        det_model = config.get("General", "detection_model", fallback="db_resnet50")
+        rec_model = config.get("General", "recognition_model", fallback="parseq")  # fallback to parseq
+
+        # Enforce hardcoded defaults if config.ini is missing or empty
+        if not det_model:
+            det_model = "db_resnet50"
+        if not rec_model:
+            rec_model = "parseq"
 
         cache_dir = Path.home() / ".cache" / "doctr" / "models"
-        required_models = [
-            ("db_resnet50", "Text Detection"),
-            ("crnn_vgg16_bn", "Text Recognition")
-        ]
 
         def model_exists(name):
-            return any(p.name.startswith(name) for p in cache_dir.glob("*.pt"))
+            return any(p.name.split('-')[0] == name for p in cache_dir.glob("*.pt"))
 
-        # Progress allocation for model check/download
+        # Only check/download the models specified in config.ini or hardcoded defaults
+        required_models = [
+            (det_model, "Text Detection", "detection"),
+            (rec_model, "Text Recognition", "recognition")
+        ]
+
         progress = 10
-        progress_step = 10  # Each model check/download increases by 10
+        progress_step = 20  # Only two models, so 20 each
 
-        for model_name, model_desc in required_models:
+        for model_name, model_desc, model_type in required_models:
             if not model_exists(model_name):
                 splash.update_status(f"Downloading {model_name} ({model_desc})...", progress)
                 QCoreApplication.processEvents()
                 try:
-                    if model_name == "db_resnet50":
-                        doctr_models.detection.db_resnet50(pretrained=True)
-                    elif model_name == "crnn_vgg16_bn":
-                        doctr_models.recognition.crnn_vgg16_bn(pretrained=True)
+                    if model_type == "detection":
+                        getattr(doctr_models.detection, model_name)(pretrained=True)
+                    else:
+                        getattr(doctr_models.recognition, model_name)(pretrained=True)
                     progress += progress_step
                     splash.update_status(f"Downloaded {model_name} ({model_desc})", progress)
                     QCoreApplication.processEvents()
@@ -211,7 +225,7 @@ def main(app, splash):
                 splash.update_status(f"{model_name} ({model_desc}) found.", progress)
                 QCoreApplication.processEvents()
                 progress += progress_step
-        splash.update_status("OCR models ready.", 35)
+        splash.update_status("OCR models ready.", 50)
         QCoreApplication.processEvents()
         # --- End DocTR Model Check ---
 
