@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
             
             # Initialize GUI
             self.setWindowTitle("VisionLane OCR (Can't fix GUI so slow I wanna cry, disappear, and become a potato)")
-            self.setMinimumSize(800, 400)
+            self.setMinimumSize(800, 450)
             
             # Config parser for INI file
             self.config_path = self.project_root / "config.ini"
@@ -643,15 +643,15 @@ class MainWindow(QMainWindow):
         def create_tab(title, select_btn_text):
             widget = QWidget()
             layout = QVBoxLayout(widget)
-            layout.setSpacing(5)  # Reduce spacing between elements
-            layout.setContentsMargins(10, 10, 10, 10)  # Reduce margins
-            
+            layout.setSpacing(5)
+            layout.setContentsMargins(10, 10, 10, 10)
+
             # Input selection
             select_btn = QPushButton(select_btn_text)
             select_btn.setStyleSheet(btn_style)
             label = QLabel("No file selected")
             label.setStyleSheet(label_style)
-            
+
             # Output selection
             out_layout = QHBoxLayout()
             out_layout.setSpacing(5)
@@ -660,39 +660,72 @@ class MainWindow(QMainWindow):
             output_path.setMinimumHeight(25)
             browse_btn = QPushButton("Browse Output")
             browse_btn.setStyleSheet(btn_style)
-            
+            browse_btn.setMinimumWidth(120)
+            browse_btn.setMaximumWidth(120)
             out_layout.addWidget(output_path, stretch=4)
             out_layout.addWidget(browse_btn, stretch=1)
-            
             layout.addWidget(select_btn)
             layout.addWidget(label)
             layout.addLayout(out_layout)
-            layout.addStretch()  # Add stretch to keep elements at top
-            
-            return widget, select_btn, label, output_path, browse_btn
+
+            # --- Archive row below output directory row ---
+            archive_layout = QHBoxLayout()
+            archive_checkbox = QCheckBox("Archiving?")
+            archive_dir = QLineEdit()
+            archive_dir.setPlaceholderText("Archive directory")
+            archive_dir.setMinimumHeight(25)
+            archive_browse_btn = QPushButton("Browse Archive")
+            archive_browse_btn.setStyleSheet(btn_style)
+            archive_browse_btn.setMinimumWidth(120)
+            archive_browse_btn.setMaximumWidth(120)
+            # Enable/disable archive_dir and browse button based on checkbox
+            def on_archive_checked(state):
+                enabled = state == 2  # 2 == Checked, 0 == Unchecked
+                archive_dir.setEnabled(enabled)
+                archive_browse_btn.setEnabled(enabled)
+            archive_checkbox.stateChanged.connect(on_archive_checked)
+            # Set initial state based on checkbox
+            on_archive_checked(archive_checkbox.checkState())
+            archive_layout.addWidget(archive_checkbox)
+            archive_layout.addWidget(archive_dir, stretch=4)
+            archive_layout.addWidget(archive_browse_btn, stretch=1)
+            layout.addLayout(archive_layout)
+            # Store references for later use
+            widget._archive_checkbox = archive_checkbox
+            widget._archive_dir = archive_dir
+            widget._archive_browse_btn = archive_browse_btn
+
+            layout.addStretch()
+            return widget, select_btn, label, output_path, browse_btn, archive_checkbox, archive_dir, archive_browse_btn
         
         # Single File tab
-        single_widget, select_file_btn, self.single_file_label, self.single_output_path, single_browse_btn = create_tab(
+        single_widget, select_file_btn, self.single_file_label, self.single_output_path, single_browse_btn, \
+            self.single_archive_checkbox, self.single_archive_dir, self.single_archive_browse_btn = create_tab(
             "Single File", "Select Input File"
         )
         select_file_btn.clicked.connect(self._select_single_file)
         single_browse_btn.clicked.connect(lambda: self._browse_output(self.single_output_path))
+        self.single_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.single_archive_dir))
         self.tab_widget.addTab(single_widget, "Single File")
         
         # Folder tab
-        folder_widget, select_folder_btn, self.folder_label, self.folder_output_path, folder_browse_btn = create_tab(
+        folder_widget, select_folder_btn, self.folder_label, self.folder_output_path, folder_browse_btn, \
+            self.folder_archive_checkbox, self.folder_archive_dir, self.folder_archive_browse_btn = create_tab(
             "Folder", "Select Input Folder"
         )
         select_folder_btn.clicked.connect(self._select_folder)
         folder_browse_btn.clicked.connect(lambda: self._browse_output(self.folder_output_path))
+        self.folder_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.folder_archive_dir))
         self.tab_widget.addTab(folder_widget, "Folder")
         
         # PDF tab
-        pdf_widget, select_pdf_btn, self.pdf_label, self.pdf_output_path, pdf_browse_btn = create_tab(
+        pdf_widget, select_pdf_btn, self.pdf_label, self.pdf_output_path, pdf_browse_btn, \
+            self.pdf_archive_checkbox, self.pdf_archive_dir, self.pdf_archive_browse_btn = create_tab(
             "PDF", "Select Input PDF"
         )
         select_pdf_btn.clicked.connect(self._select_pdf)
         pdf_browse_btn.clicked.connect(lambda: self._browse_output(self.pdf_output_path))
+        self.pdf_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.pdf_archive_dir))
         self.tab_widget.addTab(pdf_widget, "PDF")
         
         # Add tab widget to parent layout with reduced height
@@ -1872,7 +1905,7 @@ class MainWindow(QMainWindow):
                 <li>Remembers last used paths and settings</li>
                 <li>Real-time progress and current file display</li>
                 <li>Robust error handling and safe resource cleanup</li>
-                <li>Logging to file for troubleshooting</li>
+                               <li>Logging to file for troubleshooting</li>
             </ul>
             <p><b>Author:</b> <a href='https://github.com/NeoMatrix14241'>NeoMatrix14241</a></p>
             <p><i>Visit the <a href='https://github.com/NeoMatrix14241/VisionLane'>GitHub repository</a> for updates.</i></p>
