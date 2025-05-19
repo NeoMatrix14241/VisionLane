@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import signal
 from pathlib import Path
@@ -16,12 +17,28 @@ import psutil
 import torch
 import gc
 import time
-import sys
 import threading
 import tempfile
 import shutil
 from utils.thread_killer import ThreadKiller
 from utils.pypdfcompressor import compress_pdf  # Add this import
+
+# --- PATCH: Suppress nvidia-smi console window on Windows ---
+import subprocess
+if sys.platform.startswith("win"):
+    _orig_popen = subprocess.Popen
+    def _patched_popen(*args, **kwargs):
+        # If calling nvidia-smi, suppress window
+        cmd = args[0] if args else kwargs.get("args", "")
+        if isinstance(cmd, (list, tuple)):
+            cmd_str = " ".join(cmd)
+        else:
+            cmd_str = str(cmd)
+        if "nvidia-smi" in cmd_str.lower():
+            kwargs["creationflags"] = kwargs.get("creationflags", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        return _orig_popen(*args, **kwargs)
+    subprocess.Popen = _patched_popen
+# --- END PATCH ---
 
 # Disable PIL decompression bomb warning
 Image.MAX_IMAGE_PIXELS = None  # Add this line to remove the warning
