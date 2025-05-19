@@ -56,7 +56,7 @@ The following features and improvements are planned for future releases:
   _→ Save UI preferences, text detection and text recognition model selections, input/output/archive options, select processor if CPU or GPU etc._
 
 ### 📁 File Handling Enhancements
-- [ ] Add option to archive processed files  
+- [x] Add option to archive processed files  
   _→ Automatically move completed input files to a separate folder_
 - [x] Add compression function for output PDFs  
   _→ Preserve searchable text while applying JPEG-based compression_

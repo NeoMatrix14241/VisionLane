@@ -15,7 +15,8 @@ import gc
 import torch
 import time
 import configparser
-import shutil  # Add this import
+import shutil
+from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -185,6 +186,11 @@ class MainWindow(QMainWindow):
         compress_enabled = self.config.getboolean("General", "compress_enabled", fallback=False)
         compression_type = self.config.get("General", "compression_type", fallback="jpeg")
         compression_quality = self.config.getint("General", "compression_quality", fallback=100)
+        # --- Archiving settings ---
+        archive_enabled = self.config.getboolean("General", "archive_enabled", fallback=False)
+        archive_single = self.config.get("Paths", "archive_single", fallback="")
+        archive_folder = self.config.get("Paths", "archive_folder", fallback="")
+        archive_pdf = self.config.get("Paths", "archive_pdf", fallback="")
 
         self._config_values = {
             "dpi": dpi,
@@ -204,6 +210,11 @@ class MainWindow(QMainWindow):
             "compress_enabled": compress_enabled,
             "compression_type": compression_type,
             "compression_quality": compression_quality,
+            # --- Archiving ---
+            "archive_enabled": archive_enabled,
+            "archive_single": archive_single,
+            "archive_folder": archive_folder,
+            "archive_pdf": archive_pdf,
         }
 
     def _create_ui(self):
@@ -281,6 +292,17 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self.compression_type_combo.setCurrentIndex(idx)
         self.quality_slider.setValue(v.get("compression_quality", 100))
+        # --- Restore archiving settings ---
+        self.single_archive_checkbox.setChecked(v.get("archive_enabled", False))
+        self.folder_archive_checkbox.setChecked(v.get("archive_enabled", False))
+        self.pdf_archive_checkbox.setChecked(v.get("archive_enabled", False))
+        if v.get("archive_single"):
+            self.single_archive_dir.setText(v["archive_single"])
+        if v.get("archive_folder"):
+            self.folder_archive_dir.setText(v["archive_folder"])
+        if v.get("archive_pdf"):
+            self.pdf_archive_dir.setText(v["archive_pdf"])
+        # ...existing code...
 
     def _save_config(self):
         """Save all GUI settings to config.ini"""
@@ -300,6 +322,15 @@ class MainWindow(QMainWindow):
         self.config.set("General", "compress_enabled", str(self.compress_checkbox.isChecked()))
         self.config.set("General", "compression_type", self.compression_type_combo.currentText().lower())
         self.config.set("General", "compression_quality", str(self.quality_slider.value()))
+        # --- Archiving settings ---
+        self.config.set("General", "archive_enabled", str(
+            self.single_archive_checkbox.isChecked() or
+            self.folder_archive_checkbox.isChecked() or
+            self.pdf_archive_checkbox.isChecked()
+        ))
+        self.config.set("Paths", "archive_single", self.single_archive_dir.text())
+        self.config.set("Paths", "archive_folder", self.folder_archive_dir.text())
+        self.config.set("Paths", "archive_pdf", self.pdf_archive_dir.text())
         # Paths
         self.config.set("Paths", "single", str(self.selected_paths['single'] or ""))
         self.config.set("Paths", "folder", str(self.selected_paths['folder'] or ""))
@@ -1438,19 +1469,19 @@ class MainWindow(QMainWindow):
             return False
 
     def _start_processing(self):
-        """Start processing with improved error handling"""
+        """Start processing with improved error handling and archiving support"""
         try:
             # --- Sync compression settings to OCRProcessor before processing ---
             if hasattr(self, 'ocr'):
                 self.ocr.compress_images = self.compress_checkbox.isChecked()
                 self.ocr.compression_type = self.compression_type_combo.currentText().lower()
                 self.ocr.compression_quality = self.quality_slider.value()
-            
+
             # Check if already processing
             if self.current_worker and self.current_worker.is_running:
                 QMessageBox.warning(self, "Warning", "Processing already in progress")
                 return
-                
+
             # Get processing parameters and count files first
             current_tab = self.tab_widget.currentIndex()
             mode, path = self._get_processing_params(current_tab)
@@ -1458,7 +1489,6 @@ class MainWindow(QMainWindow):
 
             # Store the list of files to process for progress display
             if mode == 'folder':
-                # Gather all supported files in the folder, sorted
                 image_exts = ['.tif', '.tiff', '.jpg', '.jpeg', '.png']
                 folder = Path(path)
                 files = []
@@ -1469,52 +1499,119 @@ class MainWindow(QMainWindow):
             else:
                 self._files_to_process = [path]
 
+            # --- Archiving logic ---
+            archive_enabled = False
+            archive_dir = None
+            if current_tab == 0:  # Single File
+                archive_enabled = self.single_archive_checkbox.isChecked()
+                archive_dir = self.single_archive_dir.text().strip()
+            elif current_tab == 1:  # Folder
+                archive_enabled = self.folder_archive_checkbox.isChecked()
+                archive_dir = self.folder_archive_dir.text().strip()
+            elif current_tab == 2:  # PDF
+                archive_enabled = self.pdf_archive_checkbox.isChecked()
+                archive_dir = self.pdf_archive_dir.text().strip()
+
+            # Validate archive path if archiving is enabled
+            if archive_enabled:
+                if not archive_dir:
+                    logger.error("Archiving is enabled but no archive directory is specified.")
+                    QMessageBox.critical(self, "Archiving Error", "Archiving is enabled but no archive directory is specified.")
+                    return
+                archive_dir = Path(archive_dir)
+                if not archive_dir.exists():
+                    try:
+                        archive_dir.mkdir(parents=True, exist_ok=True)
+                        logger.info(f"Created archive directory: {archive_dir}")
+                    except Exception as e:
+                        logger.error(f"Failed to create archive directory: {e}")
+                        QMessageBox.critical(self, "Archiving Error", f"Failed to create archive directory:\n{e}")
+                        return
+
             # Reset state before starting
             self.processed_files = 0
             self.last_progress = 0
             self.max_processed = 0
             self._last_displayed_file = None
-            
-            # Initialize progress display with 0/total first
+
             self.current_file_label.setText("Starting processing...")
             self.overall_progress_label.setText(f"Files Processed: 0/{self.total_files}")
             self.overall_progress.setValue(0)
-            QApplication.processEvents()  # Force update
-            
-            # Reset OCR state
+            QApplication.processEvents()
+
             if hasattr(self, 'ocr'):
                 self.ocr.reset_state()
-                self.ocr._processed_files.clear()  # Ensure processed files is empty
-            
-            # Create worker and connect signals
+                self.ocr._processed_files.clear()
+
             self.current_worker = OCRWorker(self.ocr, mode, path)
-            
-            # Connect signals with exception handling
+            # ...existing signal connections...
             try:
-                # Connect all signals first - Fix: Changed _on_progress to _update_overall_progress
                 self.current_worker.signals.progress.connect(self._update_overall_progress)
                 self.current_worker.signals.error.connect(self._handle_error)
                 self.current_worker.signals.cancelled.connect(self._on_cancelled)
                 self.current_worker.signals.finished.connect(self._process_finished)
-                
-                # Update UI state
+
                 self.start_button.setEnabled(False)
                 self.cancel_button.setEnabled(True)
                 self.overall_progress.setValue(0)
-                
-                # Start monitoring
+
                 self.progress_monitor.start()
                 self.sync_timer.start()
-                
-                # Start processing
+
                 logger.info(f"Starting processing: mode={mode}, path={path}")
                 self.thread_pool.start(self.current_worker)
-                
             except Exception as e:
                 logger.error(f"Failed to connect worker signals: {e}")
                 self._handle_error(f"Failed to start processing: {e}")
                 self.current_worker = None
-                
+
+            # --- After processing, perform archiving if enabled ---
+            if archive_enabled:
+                try:
+                    def do_archive():
+                        try:
+                            if mode == 'single':
+                                src = Path(path)
+                                rel_path = src.name
+                                dst = archive_dir / rel_path
+                                logger.info(f"Archiving single file: {src} -> {dst}")
+                                shutil.move(str(src), str(dst))
+                                logger.info(f"Archived single file: {src} -> {dst}")
+                            elif mode == 'folder':
+                                src_folder = Path(path)
+                                for file in self._files_to_process:
+                                    file = Path(file)
+                                    rel_path = file.relative_to(src_folder)
+                                    dst = archive_dir / rel_path
+                                    dst.parent.mkdir(parents=True, exist_ok=True)
+                                    logger.info(f"Archiving file: {file} -> {dst}")
+                                    shutil.move(str(file), str(dst))
+                                    logger.info(f"Archived file: {file} -> {dst}")
+                            elif mode == 'pdf':
+                                src = Path(path)
+                                rel_path = src.name
+                                dst = archive_dir / rel_path
+                                logger.info(f"Archiving PDF: {src} -> {dst}")
+                                shutil.move(str(src), str(dst))
+                                logger.info(f"Archived PDF: {src} -> {dst}")
+                        except Exception as e:
+                            logger.error(f"Archiving error: {e}")
+                            QMessageBox.critical(self, "Archiving Error", f"Failed to archive files:\n{e}")
+
+                    def on_finished(success):
+                        if success and not self.ocr.is_cancelled:
+                            logger.info("Processing finished successfully, starting archiving.")
+                            do_archive()
+                        self._process_finished(success)
+                    try:
+                        self.current_worker.signals.finished.disconnect()
+                    except Exception:
+                        pass
+                    self.current_worker.signals.finished.connect(on_finished)
+                except Exception as e:
+                    logger.error(f"Archiving setup error: {e}")
+                    QMessageBox.critical(self, "Archiving Error", f"Failed to setup archiving:\n{e}")
+
         except Exception as e:
             logger.error(f"Error starting processing: {e}", exc_info=True)
             self._handle_error(str(e))
