@@ -168,39 +168,79 @@ def main(app, splash):
     debug_logger = None
     window = None
     try:
-        # Import necessary modules here rather than at the top
         from pathlib import Path
         from utils.debug_helper import DebugLogger, CrashHandler
-        
-        # Set up imports with progress updates
-        splash.update_status("Loading core modules...", 10)
+
+        # --- DocTR Model Check and Download ---
+        splash.update_status("Checking OCR models...", 10)
+        QCoreApplication.processEvents()
+
+        import doctr.models as doctr_models
+        import getpass
+
+        cache_dir = Path.home() / ".cache" / "doctr" / "models"
+        required_models = [
+            ("db_resnet50", "Text Detection"),
+            ("crnn_vgg16_bn", "Text Recognition")
+        ]
+
+        def model_exists(name):
+            return any(p.name.startswith(name) for p in cache_dir.glob("*.pt"))
+
+        # Progress allocation for model check/download
+        progress = 10
+        progress_step = 10  # Each model check/download increases by 10
+
+        for model_name, model_desc in required_models:
+            if not model_exists(model_name):
+                splash.update_status(f"Downloading {model_name} ({model_desc})...", progress)
+                QCoreApplication.processEvents()
+                try:
+                    if model_name == "db_resnet50":
+                        doctr_models.detection.db_resnet50(pretrained=True)
+                    elif model_name == "crnn_vgg16_bn":
+                        doctr_models.recognition.crnn_vgg16_bn(pretrained=True)
+                    progress += progress_step
+                    splash.update_status(f"Downloaded {model_name} ({model_desc})", progress)
+                    QCoreApplication.processEvents()
+                except Exception as e:
+                    splash.update_status(f"Failed to download {model_name}: {e}", 100)
+                    QCoreApplication.processEvents()
+                    raise RuntimeError(f"Failed to download {model_name}: {e}")
+            else:
+                splash.update_status(f"{model_name} ({model_desc}) found.", progress)
+                QCoreApplication.processEvents()
+                progress += progress_step
+        splash.update_status("OCR models ready.", 35)
+        QCoreApplication.processEvents()
+        # --- End DocTR Model Check ---
+
+        splash.update_status("Loading core modules...", 40)
         QCoreApplication.processEvents()
         
-        splash.update_status("Loading utilities...", 20)
+        splash.update_status("Loading utilities...", 50)
         QCoreApplication.processEvents()
         
-        # Initialize logging and debug
-        splash.update_status("Initializing logging...", 30)
+        splash.update_status("Initializing logging...", 60)
         QCoreApplication.processEvents()
         
         logger = logging.getLogger(__name__)
         debug_logger = DebugLogger()
         
-        splash.update_status("Configuring system...", 40)
+        splash.update_status("Configuring system...", 70)
         QCoreApplication.processEvents()
         
         logger.info("Initializing application")
         logger.debug(f"Python executable: {sys.executable}")
         logger.debug(f"Working directory: {os.getcwd()}")
         
-        # Configure base directories for application
         base_dir = Path(__file__).parent.resolve()
         
-        # Import main window
+        splash.update_status("Loading main window...", 80)
+        QCoreApplication.processEvents()
         from gui.main_window import MainWindow
-        window = MainWindow()  # Remove output_base_dir parameter
+        window = MainWindow()
         
-        # Store references for cleanup
         app.window = window
         app._cleanup_done = False
         
@@ -209,8 +249,7 @@ def main(app, splash):
                 try:
                     if window:
                         window.cleanup_and_exit()
-                        window.close()  # Explicitly close window
-                    # Force terminate any remaining processes
+                        window.close()
                     import psutil
                     current_process = psutil.Process()
                     children = current_process.children(recursive=True)
@@ -222,12 +261,11 @@ def main(app, splash):
                 except:
                     pass
                 app._cleanup_done = True
-                # Don't call quit() here since event loop will handle it
-        
-        # Register cleanup
+
         app.aboutToQuit.connect(cleanup_on_exit)
         
-        # Show window and close splash more gracefully
+        splash.update_status("Finalizing...", 95)
+        QCoreApplication.processEvents()
         window.show()
         splash.finish(window)
         window.activateWindow()
@@ -236,7 +274,6 @@ def main(app, splash):
         if logger:
             logger.info("Starting Qt event loop")
         
-        # Return None instead of app.exec()
         return None
         
     except Exception as e:

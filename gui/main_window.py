@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QPu
                            QLineEdit, QDialogButtonBox, QSpinBox, QCheckBox,
                            QFormLayout, QDialog, QProgressDialog)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QThreadPool
+from PyQt6.QtGui import QIcon
 import logging
 import sys
 import json
@@ -14,6 +15,7 @@ from datetime import datetime
 import gc
 import torch
 import time
+import configparser
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -50,6 +52,10 @@ class MainWindow(QMainWindow):
             logger.debug("Starting MainWindow initialization")
             super().__init__()
             logger.debug("MainWindow parent initialized")
+
+            # Set window icon
+            icon_path = str(Path(__file__).parent.parent / "icon.ico")
+            self.setWindowIcon(QIcon(icon_path))
             
             # Ensure window is visible
             self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
@@ -126,6 +132,12 @@ class MainWindow(QMainWindow):
             # Initialize GUI
             self.setWindowTitle("VisionLane OCR (Can't fix GUI so slow I wanna cry, disappear, and become a potato)")
             self.setMinimumSize(800, 400)
+            
+            # Config parser for INI file
+            self.config_path = self.project_root / "config.ini"
+            self.config = configparser.ConfigParser()
+            self._load_config()
+            
             self._create_ui()
             
             # Initialize OCR model
@@ -138,6 +150,44 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to initialize main window: {e}", exc_info=True)
             raise
+
+    def _load_config(self):
+        """Load settings from config.ini"""
+        if self.config_path.exists():
+            self.config.read(self.config_path, encoding="utf-8")
+        # DPI
+        dpi = self.config.get("General", "dpi", fallback="300")
+        # Output format
+        output_format = self.config.get("General", "output_format", fallback="PDF")
+        # Theme
+        theme_mode = self.config.get("General", "theme_mode", fallback="system")
+        # Last directories
+        last_single = self.config.get("Paths", "single", fallback="")
+        last_folder = self.config.get("Paths", "folder", fallback="")
+        last_pdf = self.config.get("Paths", "pdf", fallback="")
+        last_output_single = self.config.get("Paths", "output_single", fallback="")
+        last_output_folder = self.config.get("Paths", "output_folder", fallback="")
+        last_output_pdf = self.config.get("Paths", "output_pdf", fallback="")
+        # Performance
+        thread_count = self.config.getint("Performance", "thread_count", fallback=psutil.cpu_count(logical=True))
+        operation_timeout = self.config.getint("Performance", "operation_timeout", fallback=600)
+        chunk_timeout = self.config.getint("Performance", "chunk_timeout", fallback=60)
+
+        # Store for later use in UI creation
+        self._config_values = {
+            "dpi": dpi,
+            "output_format": output_format,
+            "theme_mode": theme_mode,
+            "last_single": last_single,
+            "last_folder": last_folder,
+            "last_pdf": last_pdf,
+            "last_output_single": last_output_single,
+            "last_output_folder": last_output_folder,
+            "last_output_pdf": last_output_pdf,
+            "thread_count": thread_count,
+            "operation_timeout": operation_timeout,
+            "chunk_timeout": chunk_timeout,
+        }
 
     def _create_ui(self):
         """Create UI components"""
@@ -152,33 +202,76 @@ class MainWindow(QMainWindow):
         self._create_options_section(layout)
         self._create_status_section(layout)
         self._create_action_buttons(layout)
+        # Restore config values to widgets after creation
+        self._restore_config_to_widgets()
 
-    def _delayed_init(self):
-        """Initialize heavy components after window is shown"""
-        try:
-            # Initialize OCR processor without creating directories
-            self.ocr = OCRProcessor()  # No output_base_dir parameter
-            self._setup_logging()
-            self._setup_file_logging()
-            
-            # Setup timers
-            self.hw_timer = QTimer(self)
-            self.hw_timer.timeout.connect(self._update_hardware_info)
-            self.hw_timer.start(1000)
-            
-            self.progress_timer = QTimer(self)
-            self.progress_timer.timeout.connect(self._force_progress_update)
-            self.progress_timer.setInterval(100)
-            
-            self.update_timer = QTimer(self)
-            self.update_timer.timeout.connect(self._update_gui)
-            self.update_timer.setInterval(100)
-            
-            self._update_hardware_info()
-            
-        except Exception as e:
-            logger.error(f"Delayed initialization failed: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to initialize: {e}")
+    def _restore_config_to_widgets(self):
+        """Restore loaded config values to widgets"""
+        v = self._config_values
+        # DPI
+        idx = self.dpi_combo.findText(v["dpi"])
+        if idx >= 0:
+            self.dpi_combo.setCurrentIndex(idx)
+        # Output format
+        idx = self.format_combo.findText(v["output_format"])
+        if idx >= 0:
+            self.format_combo.setCurrentIndex(idx)
+        # Theme
+        self._set_theme_mode(v["theme_mode"])
+        # Last directories
+        if v["last_single"]:
+            self.selected_paths['single'] = Path(v["last_single"])
+            self.single_file_label.setText(f"Selected: {Path(v['last_single']).name}")
+        if v["last_folder"]:
+            self.selected_paths['folder'] = Path(v["last_folder"])
+            self.folder_label.setText(f"Selected: {Path(v['last_folder']).name}")
+        if v["last_pdf"]:
+            self.selected_paths['pdf'] = Path(v["last_pdf"])
+            self.pdf_label.setText(f"Selected: {Path(v['last_pdf']).name}")
+        if v["last_output_single"]:
+            self.single_output_path.setText(v["last_output_single"])
+        if v["last_output_folder"]:
+            self.folder_output_path.setText(v["last_output_folder"])
+        if v["last_output_pdf"]:
+            self.pdf_output_path.setText(v["last_output_pdf"])
+        # Performance
+        self.thread_pool.setMaxThreadCount(v["thread_count"])
+        # These will be set in _show_performance_options dialog as well
+        # but also set as attributes for OCR
+        if hasattr(self, "ocr"):
+            self.ocr.operation_timeout = v["operation_timeout"]
+            self.ocr.chunk_timeout = v["chunk_timeout"]
+
+    def _save_config(self):
+        """Save all GUI settings to config.ini"""
+        if not self.config.has_section("General"):
+            self.config.add_section("General")
+        if not self.config.has_section("Paths"):
+            self.config.add_section("Paths")
+        if not self.config.has_section("Performance"):
+            self.config.add_section("Performance")
+        # General
+        self.config.set("General", "dpi", self.dpi_combo.currentText())
+        self.config.set("General", "output_format", self.format_combo.currentText())
+        self.config.set("General", "theme_mode", self.theme_mode)
+        # Paths
+        self.config.set("Paths", "single", str(self.selected_paths['single'] or ""))
+        self.config.set("Paths", "folder", str(self.selected_paths['folder'] or ""))
+        self.config.set("Paths", "pdf", str(self.selected_paths['pdf'] or ""))
+        self.config.set("Paths", "output_single", self.single_output_path.text())
+        self.config.set("Paths", "output_folder", self.folder_output_path.text())
+        self.config.set("Paths", "output_pdf", self.pdf_output_path.text())
+        # Performance
+        self.config.set("Performance", "thread_count", str(self.thread_pool.maxThreadCount()))
+        if hasattr(self, "ocr"):
+            self.config.set("Performance", "operation_timeout", str(getattr(self.ocr, "operation_timeout", 600)))
+            self.config.set("Performance", "chunk_timeout", str(getattr(self.ocr, "chunk_timeout", 60)))
+        else:
+            self.config.set("Performance", "operation_timeout", "600")
+            self.config.set("Performance", "chunk_timeout", "60")
+        # Write to file
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            self.config.write(f)
 
     def show(self):
         """Override show to ensure window appears"""
@@ -189,6 +282,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Handle window close"""
         try:
+            self._save_config()
             # Cancel any ongoing processing first
             if self.current_worker and self.current_worker.is_running:
                 self._cancel_processing()
@@ -558,6 +652,27 @@ class MainWindow(QMainWindow):
         # Add tab widget to parent layout with reduced height
         parent_layout.addWidget(self.tab_widget)
 
+        # Restore config values for input/output paths and update labels
+        v = getattr(self, "_config_values", {})
+        # Single file
+        if v.get("last_single"):
+            self.selected_paths['single'] = Path(v["last_single"])
+            self.single_file_label.setText(f"Selected: {Path(v['last_single']).name}")
+        if v.get("last_output_single"):
+            self.single_output_path.setText(v["last_output_single"])
+        # Folder
+        if v.get("last_folder"):
+            self.selected_paths['folder'] = Path(v["last_folder"])
+            self.folder_label.setText(f"Selected: {Path(v['last_folder']).name}")
+        if v.get("last_output_folder"):
+            self.folder_output_path.setText(v["last_output_folder"])
+        # PDF
+        if v.get("last_pdf"):
+            self.selected_paths['pdf'] = Path(v["last_pdf"])
+            self.pdf_label.setText(f"Selected: {Path(v['last_pdf']).name}")
+        if v.get("last_output_pdf"):
+            self.pdf_output_path.setText(v["last_output_pdf"])
+
     def _browse_output(self, line_edit):
         """Handle output directory selection"""
         dir_path = QFileDialog.getExistingDirectory(
@@ -905,7 +1020,6 @@ class MainWindow(QMainWindow):
             self.total_files = self._get_total_files(path, mode)
 
             # Store the list of files to process for progress display
-            self._files_to_process = []
             if mode == 'folder':
                 # Gather all supported files in the folder, sorted
                 image_exts = ['.tif', '.tiff', '.jpg', '.jpeg', '.png']
@@ -1230,15 +1344,9 @@ class MainWindow(QMainWindow):
             self.file_path_label.setText(str(self.selected_file_path))
 
     def _save_settings(self):
+        """Save settings to config.ini (replaces settings.json)"""
         try:
-            settings = {
-                'dpi': self.dpi_combo.currentText(),
-                'output_format': self.format_combo.currentText(),
-                'last_directory': str(self.selected_file_path.parent if hasattr(self, 'selected_file_path') else ''),
-            }
-            settings_path = Path('settings.json')
-            with open(settings_path, 'w') as f:
-                json.dump(settings, f)
+            self._save_config()
             QMessageBox.information(self, "Success", "Settings saved successfully!")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to save settings: {str(e)}")
@@ -1394,3 +1502,30 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             logger.error(f"Error checking real progress: {e}")
+
+    def _delayed_init(self):
+        """Initialize heavy components after window is shown"""
+        try:
+            # Initialize OCR processor without creating directories
+            self.ocr = OCRProcessor()  # No output_base_dir parameter
+            self._setup_logging()
+            self._setup_file_logging()
+            
+            # Setup timers
+            self.hw_timer = QTimer(self)
+            self.hw_timer.timeout.connect(self._update_hardware_info)
+            self.hw_timer.start(1000)
+            
+            self.progress_timer = QTimer(self)
+            self.progress_timer.timeout.connect(self._force_progress_update)
+            self.progress_timer.setInterval(100)
+            
+            self.update_timer = QTimer(self)
+            self.update_timer.timeout.connect(self._update_gui)
+            self.update_timer.setInterval(100)
+            
+            self._update_hardware_info()
+            
+        except Exception as e:
+            logger.error(f"Delayed initialization failed: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to initialize: {e}")
