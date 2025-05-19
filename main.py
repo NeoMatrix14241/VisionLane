@@ -166,6 +166,7 @@ def load_real_app(app, fast_splash):
 
 def main(app, splash):
     debug_logger = None
+    window = None
     try:
         # Import necessary modules here rather than at the top
         from pathlib import Path
@@ -199,9 +200,32 @@ def main(app, splash):
         from gui.main_window import MainWindow
         window = MainWindow()
         
-        # Complete initialization
-        splash.update_status("Completing initialization...", 90)
-        QCoreApplication.processEvents()
+        # Store references for cleanup
+        app.window = window
+        app._cleanup_done = False
+        
+        def cleanup_on_exit():
+            if not app._cleanup_done:
+                try:
+                    if window:
+                        window.cleanup_and_exit()
+                        window.close()  # Explicitly close window
+                    # Force terminate any remaining processes
+                    import psutil
+                    current_process = psutil.Process()
+                    children = current_process.children(recursive=True)
+                    for child in children:
+                        try:
+                            child.terminate()
+                        except:
+                            pass
+                except:
+                    pass
+                app._cleanup_done = True
+                # Don't call quit() here since event loop will handle it
+        
+        # Register cleanup
+        app.aboutToQuit.connect(cleanup_on_exit)
         
         # Show window and close splash more gracefully
         window.show()
@@ -209,10 +233,11 @@ def main(app, splash):
         window.activateWindow()
         window.raise_()
         
-        # Store window reference
-        app.window = window
         if logger:
             logger.info("Starting Qt event loop")
+        
+        # Return None instead of app.exec()
+        return None
         
     except Exception as e:
         if debug_logger and debug_logger.crash_handler:
@@ -228,19 +253,14 @@ def main(app, splash):
 
 if __name__ == '__main__':
     try:
-        # Call freeze_support first thing - this is critical for multiprocessing
-        freeze_support()
-        
-        # Initialize app and get basic splash screen with minimal imports
+        # Initialize app and show splash
         app, fast_splash = initialize_app()
         
-        # Use QTimer to defer the loading of the rest of the application
-        # This ensures the splash appears immediately
+        # Use QTimer to defer loading rest of application
         QTimer.singleShot(0, lambda: load_real_app(app, fast_splash))
         
-        # Start event loop only once
-        exit_code = app.exec()
-        sys.exit(exit_code)
+        # Start the event loop just once
+        app.exec()
         
     except Exception as e:
         print(f"Fatal error during startup: {e}")

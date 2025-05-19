@@ -20,6 +20,8 @@ import numpy as np
 import time
 import sys
 import threading
+import tempfile
+import shutil
 from utils.thread_killer import ThreadKiller
 from utils.image_processor import ImageProcessor
 
@@ -118,16 +120,24 @@ class OCRProcessor:
             output_base_dir: Base directory for outputs
             output_formats: List of formats to output ("pdf", "hocr", or ["pdf", "hocr"] for both)
         """
-        # Make output base dir absolute
+        # Change temp directory to be separate from output
         self.output_base_dir = Path(output_base_dir).resolve()
         self.hocr_dir = self.output_base_dir / "hocr"
         self.pdf_dir = self.output_base_dir / "pdf"
-        self.temp_dir = self.output_base_dir / "temp"
+        # Create temp dir in system temp location instead
+        self.temp_dir = Path(tempfile.gettempdir()) / "VisionLaneOCR_temp"
         
-        # Create output directories
-        for dir_path in [self.hocr_dir, self.pdf_dir, self.temp_dir]:
-            dir_path.mkdir(parents=True, exist_ok=True)
-            logger.debug(f"Created directory: {dir_path}")
+        # Create output directories with proper cleanup
+        self.hocr_dir.mkdir(parents=True, exist_ok=True)
+        self.pdf_dir.mkdir(parents=True, exist_ok=True)
+        # Clear and recreate temp dir
+        if self.temp_dir.exists():
+            try:
+                shutil.rmtree(str(self.temp_dir))
+            except Exception as e:
+                logger.warning(f"Could not remove old temp dir: {e}")
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Created temp directory: {self.temp_dir}")
         
         # Check GPU availability and support with more logging
         is_supported, reason, gpu_info = _check_gpu_support()
@@ -260,34 +270,33 @@ class OCRProcessor:
         self._exit_event.clear()
 
     def cleanup_temp_files(self, force=False):
-        """Improved temp file cleanup"""
+        """Enhanced temp file cleanup with directory removal"""
         try:
             if not self.temp_dir.exists():
                 return
-            # When forcing cleanup, remove everything
-            if force:
-                for temp_file in self.temp_dir.glob("*"):
-                    try:
-                        if temp_file.is_file():
-                            os.chmod(str(temp_file), 0o666)
-                            temp_file.unlink()
-                    except Exception as e:
-                        logger.warning(f"Failed to delete temp file {temp_file}: {e}")
-                return
-            # For non-forced cleanup, preserve active PDFs
-            current_time = time.time()
-            for temp_file in self.temp_dir.glob("*"):
+                
+            # Delete all files in temp directory
+            for temp_file in self.temp_dir.glob('*'):
                 try:
-                    # Skip recent PDFs
-                    if (temp_file.suffix.lower() == '.pdf' and 
-                        current_time - temp_file.stat().st_mtime < 300):  # 5 min
-                        continue
-                        
                     if temp_file.is_file():
                         os.chmod(str(temp_file), 0o666)
                         temp_file.unlink()
                 except Exception as e:
                     logger.warning(f"Failed to delete temp file {temp_file}: {e}")
+            
+            # Remove temp directory itself if empty or forced
+            try:
+                if self.temp_dir.exists():
+                    if force:
+                        shutil.rmtree(str(self.temp_dir), ignore_errors=True)
+                    else:
+                        # Only remove if empty
+                        remaining = list(self.temp_dir.glob('*'))
+                        if not remaining:
+                            self.temp_dir.rmdir()
+            except Exception as e:
+                logger.warning(f"Could not remove temp directory: {e}")
+                
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
@@ -520,11 +529,20 @@ class OCRProcessor:
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
         except Exception as e:
             logger.error(f"Batch processing error: {e}", exc_info=True)
-            raise       
+            raise
+        finally:
+            # Always try to clean up temp directory at end of processing
+            try:
+                if self.temp_dir.exists():
+                    shutil.rmtree(str(self.temp_dir), ignore_errors=True)
+                    logger.info("Cleaned up temp directory after processing")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp directory: {e}")
+
         status = "cancelled" if self.is_cancelled else "success"
         if failed > 0:
             status = "partial"
-        return {        
+        return {
             "status": status,
             "processed": completed,
             "failed": failed,
@@ -689,11 +707,10 @@ class OCRProcessor:
     def _merge_folder_pdfs(self, folder_key: str, relative_path: Path) -> None:
         try:
             logger.info(f"Merging PDFs for folder: {relative_path}")
-            # Wait longer for temp files
             max_wait = 30  # seconds
             start_time = time.time()
             temp_pattern = f"{folder_key}-*.pdf"
-            expected_count = len(list(relative_path.glob("*.tif")))
+            expected_count = len(list(self.input_path.rglob("*.tif")))
             
             while True:
                 temp_pdfs = sorted(
@@ -715,11 +732,21 @@ class OCRProcessor:
             
             if len(temp_pdfs) != expected_count:
                 logger.error(f"Missing PDFs: found {len(temp_pdfs)}/{expected_count}")
-                # Continue anyway with what we have
+
+            # Create output directories preserving folder structure
+            output_folder = self.pdf_dir / relative_path.parent
+            output_folder.mkdir(parents=True, exist_ok=True)
             
-            # Create output directories
-            output_pdf = self.pdf_dir / relative_path / f"{relative_path.name}.pdf"
-            output_pdf.parent.mkdir(parents=True, exist_ok=True)
+            # Use the parent folder name as the PDF name
+            pdf_name = relative_path.name + ".pdf"  # This is the folder name containing the images
+            output_pdf = output_folder / pdf_name
+            
+            # Create HOCR directory with same structure if needed
+            if "hocr" in self.output_formats:
+                hocr_folder = self.hocr_dir / relative_path
+                hocr_folder.parent.mkdir(parents=True, exist_ok=True)
+            
+            logger.info(f"Output PDF path: {output_pdf}")
             
             # Merge PDFs
             merger = PdfMerger()
@@ -731,24 +758,34 @@ class OCRProcessor:
                     merged_count += 1
                 except Exception as e:
                     logger.error(f"Error adding PDF {pdf}: {e}")
-            
+        
             if merged_count > 0:
                 merger.write(str(output_pdf))
                 merger.close()
                 logger.info(f"Created PDF with {merged_count} pages: {output_pdf}")
                 
-                # Only cleanup temp PDFs after successful merge
+                # Clean up temp PDFs and folder after successful merge
                 if output_pdf.exists() and output_pdf.stat().st_size > 0:
+                    # Delete temp PDFs
                     for pdf in temp_pdfs:
                         try:
                             pdf.unlink()
                         except Exception as e:
                             logger.warning(f"Failed to delete temp PDF {pdf}: {e}")
+                    
+                    # Remove temp directory if it's empty
+                    try:
+                        remaining_files = list(self.temp_dir.glob('*'))
+                        if not remaining_files:
+                            shutil.rmtree(str(self.temp_dir), ignore_errors=True)
+                            logger.info("Removed empty temp directory")
+                    except Exception as e:
+                        logger.warning(f"Could not remove temp directory: {e}")
                 else:
-                    logger.error("Output PDF not created properly, keeping temp files")
+                    logger.error("Output PDF not created properly")
             else:
-                logger.error("No PDFs merged, keeping temp files")
-                
+                logger.error("No PDFs merged")
+
         except Exception as e:
             logger.error(f"Error merging PDFs: {e}")
             raise
@@ -828,8 +865,18 @@ class OCRProcessor:
             raise
 
     def __del__(self):
-        """Cleanup thread pool and temporary files on deletion"""
-        if hasattr(self, 'thread_pool'):
-            self.thread_pool.shutdown(wait=True)
-            logger.debug("Thread pool shutdown completed")
-        self.cleanup_temp_files()
+        """Ensure cleanup on deletion"""
+        try:
+            # Cleanup thread pool
+            if hasattr(self, 'thread_pool'):
+                self.thread_pool.shutdown(wait=False)
+            
+            # Force cleanup temp files and directory
+            self.cleanup_temp_files(force=True)
+            
+            # Clear GPU memory
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
+        except Exception as e:
+            print(f"Error during OCRProcessor cleanup: {e}")

@@ -184,26 +184,83 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Handle window close"""
         try:
-            # Cancel any ongoing processing
+            # Cancel any ongoing processing first
             if self.current_worker and self.current_worker.is_running:
                 self._cancel_processing()
             
-            # Stop all timers correctly
-            for timer in [self.hw_timer, self.update_timer, self.progress_timer, self.sync_timer, self.progress_monitor]:
-                if hasattr(self, timer.__name__):
-                    timer.stop()
+            # Stop all timers first
+            self._stop_all_timers()
             
-            # Clean up logging
-            if hasattr(self, 'log_handler'):
-                logger.removeHandler(self.log_handler)
+            # Clean up OCR and resources
+            self._cleanup_resources()
             
-            # Force cleanup
-            self._reset_processing_state()
+            # Accept the close event
+            event.accept()
             
         except Exception as e:
             logger.error(f"Error during close: {e}")
+            event.accept()
+
+    def _stop_all_timers(self):
+        """Stop all timers safely"""
+        timer_names = ['hw_timer', 'update_timer', 'progress_timer', 
+                       'sync_timer', 'progress_monitor']
+        for timer_name in timer_names:
+            if hasattr(self, timer_name):
+                timer = getattr(self, timer_name)
+                if timer and timer.isActive():
+                    timer.stop()
+                    timer.deleteLater()
+                    setattr(self, timer_name, None)
+
+    def _cleanup_resources(self):
+        """Clean up resources safely"""
+        try:
+            # Clean up OCR processor first if it exists
+            if hasattr(self, 'ocr') and self.ocr:
+                try:
+                    self.ocr.cleanup_temp_files(force=True)
+                except Exception as e:
+                    logger.error(f"Error cleaning OCR temp files: {e}")
+                self.ocr = None
+                
+            # Clean up thread pool
+            if hasattr(self, 'thread_pool'):
+                try:
+                    self.thread_pool.clear()
+                    self.thread_pool.waitForDone(1000)
+                except Exception as e:
+                    logger.error(f"Error cleaning thread pool: {e}")
+                
+            # Clean up logging
+            if hasattr(self, 'log_handler'):
+                try:
+                    logger.removeHandler(self.log_handler)
+                except Exception as e:
+                    logger.error(f"Error removing log handler: {e}")
+                
+            # Force garbage collection
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
+        except Exception as e:
+            logger.error(f"Error during resource cleanup: {e}")
+
+    def cleanup_and_exit(self):
+        """Ensure thorough cleanup before exit"""
+        try:
+            # Cancel processing and stop timers
+            self._stop_all_timers()
             
-        event.accept()
+            # Clean up resources
+            self._cleanup_resources()
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+        finally:
+            # Schedule deletion for next event loop iteration
+            self.deleteLater()
 
     def _setup_logging(self):
         """Setup file-only logging"""
