@@ -754,7 +754,21 @@ class MainWindow(QMainWindow):
             current_tab = self.tab_widget.currentIndex()
             mode, path = self._get_processing_params(current_tab)
             self.total_files = self._get_total_files(path, mode)
-            
+
+            # Store the list of files to process for progress display
+            self._files_to_process = []
+            if mode == 'folder':
+                # Gather all supported files in the folder, sorted
+                image_exts = ['.tif', '.tiff', '.jpg', '.jpeg', '.png']
+                folder = Path(path)
+                files = []
+                for ext in image_exts:
+                    files.extend(sorted(folder.rglob(f"*{ext}")))
+                pdfs = sorted(folder.rglob("*.pdf"))
+                self._files_to_process = files + pdfs
+            else:
+                self._files_to_process = [path]
+
             # Reset state before starting
             self.processed_files = 0
             self.last_progress = 0
@@ -887,11 +901,21 @@ class MainWindow(QMainWindow):
     def _update_overall_progress(self, current_file, total_files, file_progress):
         """Update progress with live file display"""
         try:
-            # Update current file display first
-            if hasattr(self.ocr, 'current_file') and self.ocr.current_file:
-                current = Path(self.ocr.current_file).name
-                self.current_file_label.setText(f"Processing: {current}")
-            
+            # Show "Starting processing..." at the beginning
+            if current_file == 0:
+                self.current_file_label.setText("Starting processing...")
+            else:
+                # Show the correct file name based on progress
+                if hasattr(self, '_files_to_process') and len(self._files_to_process) >= current_file:
+                    file_idx = current_file - 1
+                    if 0 <= file_idx < len(self._files_to_process):
+                        filename = Path(self._files_to_process[file_idx]).name
+                        self.current_file_label.setText(f"Processing: {filename}")
+                    else:
+                        self.current_file_label.setText("Processing...")
+                else:
+                    self.current_file_label.setText("Processing...")
+
             # Update progress counts
             self.processed_files = current_file
             self.total_files = total_files if total_files > 0 else self.total_files
