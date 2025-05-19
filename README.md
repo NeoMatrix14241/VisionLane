@@ -6,9 +6,7 @@
 
 A powerful OCR (Optical Character Recognition) application built with DocTR and PyQt6, designed for high-performance document processing with GPU acceleration support.
 
-![gui](https://github.com/user-attachments/assets/8bba62e9-20bf-4c7e-b0ac-fd264b09202d)
-![image](https://github.com/user-attachments/assets/f7fbb922-61da-4d60-bdd0-c6ddeb9d2c87)
-
+![image](https://github.com/user-attachments/assets/2de601b3-fd5c-4e29-adf5-9b9c82c18148)
 
 ![Apache License](https://img.shields.io/badge/license-Apache-blue.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
