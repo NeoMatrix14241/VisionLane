@@ -1986,7 +1986,7 @@ class MainWindow(QMainWindow):
     def _show_about(self):
         about_text = """
             <h3>VisionLane OCR</h3>
-            <p><b>Version:</b> 1.0.0.0</p>
+            <p><b>Version:</b> 0.2.0</p>
             <p>A powerful OCR engine built with <a href='https://github.com/mindee/doctr'>DocTR</a> for document processing.</p>
             <p><b>Features:</b></p>
             <ul>
