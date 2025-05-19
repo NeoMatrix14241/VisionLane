@@ -113,7 +113,7 @@ def _check_gpu_support():
     return True, "GPU(s) supported", gpu_info
 
 class OCRProcessor:
-    def __init__(self, output_base_dir: str = None, output_formats: List[str] = ["pdf"], detection_model: str = "db_resnet50", recognition_model: str = "crnn_vgg16_bn"):
+    def __init__(self, output_base_dir: str = None, output_formats: List[str] = ["pdf"], detection_model: str = "db_resnet50", recognition_model: str = "crnn_vgg16_bn", dpi: int = None):
         # Set detection/recognition models FIRST
         self.detection_model = detection_model
         self.recognition_model = recognition_model
@@ -453,7 +453,7 @@ class OCRProcessor:
             logger.debug(f"Full path: {image_path}")
             # Create temp PDF with index to maintain order
             temp_pdf_path = self.temp_dir / f"{folder_key}-{current_index:04d}.pdf"
-            self._process_single_image(image_path, temp_pdf_path)
+            self._process_single_image(image_path, temp_pdf_path, dpi=self.dpi)
             
             # Only merge when processing the last image
             if current_index == len(all_images) - 1:
@@ -592,7 +592,7 @@ class OCRProcessor:
         """Alias for process_image for backward compatibility"""
         return self.process_image(file_path)
                 
-    def _process_single_image(self, image_path: Path, temp_pdf_path: Path) -> None:
+    def _process_single_image(self, image_path: Path, temp_pdf_path: Path, dpi=None) -> None:
         """Process single image with improved error handling and memory management"""
         if self.is_cancelled or self._force_stop:
             return None
@@ -709,11 +709,25 @@ class OCRProcessor:
                 max_retries = 3
                 last_error = None
                 
+                # Determine DPI
+                dpi_to_use = dpi
+                if dpi_to_use is None:
+                    # Try to read DPI from image metadata
+                    try:
+                        with Image.open(image_path) as img:
+                            dpi_meta = img.info.get("dpi")
+                            if dpi_meta and isinstance(dpi_meta, (tuple, list)) and dpi_meta[0] > 0:
+                                dpi_to_use = int(dpi_meta[0])
+                            else:
+                                dpi_to_use = 300  # Fallback default
+                    except Exception:
+                        dpi_to_use = 300
+
                 for attempt in range(max_retries):
                     try:
                         hocr = HocrTransform(
                             hocr_filename=str(temp_hocr),
-                            dpi=300
+                            dpi=dpi_to_use
                         )
                         # Save to intermediate file first
                         hocr.to_pdf(

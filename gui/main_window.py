@@ -163,7 +163,9 @@ class MainWindow(QMainWindow):
             detection_model = self.config.get("General", "detection_model", fallback=detection_model)
             recognition_model = self.config.get("General", "recognition_model", fallback=recognition_model)
         # DPI
-        dpi = self.config.get("General", "dpi", fallback="300")
+        dpi = self.config.get("General", "dpi", fallback="Auto")
+        if dpi not in ["Auto", "72", "96", "150", "200", "240", "250", "300", "350", "400", "450", "500", "600", "800", "900", "1200"]:
+            dpi = "Auto"
         # Output format
         output_format = self.config.get("General", "output_format", fallback="PDF")
         # Theme
@@ -218,9 +220,11 @@ class MainWindow(QMainWindow):
         """Restore loaded config values to widgets"""
         v = self._config_values
         # DPI
-        idx = self.dpi_combo.findText(v["dpi"])
+        idx = self.dpi_combo.findText(v.get("dpi", "Auto"))
         if idx >= 0:
             self.dpi_combo.setCurrentIndex(idx)
+        else:
+            self.dpi_combo.setCurrentIndex(0)  # Always default to "Auto"
         # Output format
         idx = self.format_combo.findText(v["output_format"])
         if idx >= 0:
@@ -778,7 +782,10 @@ class MainWindow(QMainWindow):
         # DPI + Output Format row
         options_layout1 = QHBoxLayout()
         self.dpi_combo = QComboBox()
-        self.dpi_combo.addItems(["300", "600", "900"])
+        # Add more DPI options and "Auto" as the first/default
+        dpi_options = ["Auto", "72", "96", "150", "200", "240", "250", "300", "350", "400", "450", "500", "600", "800", "900", "1200"]
+        self.dpi_combo.addItems(dpi_options)
+        self.dpi_combo.setCurrentIndex(0)  # Always default to "Auto"
         options_layout1.addWidget(QLabel("DPI:"))
         options_layout1.addWidget(self.dpi_combo)
 
@@ -1340,6 +1347,15 @@ class MainWindow(QMainWindow):
             output_dir = Path(self.single_output_path.text())
             self.ocr.set_output_directory(output_dir)
             self.ocr.output_formats = output_formats
+            dpi_text = self.dpi_combo.currentText()
+            if dpi_text == "Auto":
+                dpi_value = None
+            else:
+                try:
+                    dpi_value = int(dpi_text)
+                except Exception:
+                    dpi_value = None
+            self.ocr.dpi = dpi_value  # Pass DPI to OCRProcessor
             return 'single', self.selected_paths['single']
             
         elif tab_index == 1:  # Folder
@@ -1348,7 +1364,16 @@ class MainWindow(QMainWindow):
             if not self.folder_output_path.text():
                 raise ValueError("Please select output directory")
             self.ocr.output_base_dir = Path(self.folder_output_path.text())
-            self.ocr.output_formats = output_formats  # Set output formats
+            self.ocr.output_formats = output_formats
+            dpi_text = self.dpi_combo.currentText()
+            if dpi_text == "Auto":
+                dpi_value = None
+            else:
+                try:
+                    dpi_value = int(dpi_text)
+                except Exception:
+                    dpi_value = None
+            self.ocr.dpi = dpi_value
             path = self.selected_paths['folder']
             self.ocr.input_path = path
             return 'folder', path
@@ -1359,7 +1384,16 @@ class MainWindow(QMainWindow):
             if not self.pdf_output_path.text():
                 raise ValueError("Please select output directory")
             self.ocr.output_base_dir = Path(self.pdf_output_path.text())
-            self.ocr.output_formats = output_formats  # Set output formats
+            self.ocr.output_formats = output_formats
+            dpi_text = self.dpi_combo.currentText()
+            if dpi_text == "Auto":
+                dpi_value = None
+            else:
+                try:
+                    dpi_value = int(dpi_text)
+                except Exception:
+                    dpi_value = None
+            self.ocr.dpi = dpi_value
             return 'pdf', self.selected_paths['pdf']
 
     def _get_total_files(self, path: Path, mode: str) -> int:
