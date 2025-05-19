@@ -80,9 +80,6 @@ class MainWindow(QMainWindow):
             self.hocr_dir = None
             self.temp_dir = None
             
-            # Create data directory if it doesn't exist
-            (self.project_root / "data").mkdir(exist_ok=True)
-            
             # Initialize progress tracking
             self.processed_files = 0
             self.total_files = 0
