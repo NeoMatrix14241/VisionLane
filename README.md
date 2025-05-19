@@ -35,6 +35,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - 🔒 Settings saved to config.ini for persistent preferences
 - 🧭 Guided dialogs for missing dependencies (e.g., Ghostscript "Learn More" button)
 - 📝 Logging to file for troubleshooting
+- 📦 **Archiving Option:** After processing, optionally move input files/folders to a specified archive directory, preserving the original folder structure. Archiving is configurable per input mode and settings are saved in config.ini.
 
 ## Requirements
 
@@ -54,10 +55,12 @@ The following features and improvements are planned for future releases:
   _→ User-selectable models for more flexibility and accuracy tuning_
 - [x] Implement a config file to persist user settings  
   _→ Save UI preferences, text detection and text recognition model selections, input/output/archive options, select processor if CPU or GPU etc._
+- [x] **Archiving option for processed files**  
+  _→ Optionally move processed input files/folders to a specified archive directory, preserving folder structure. Archive settings are saved and restored from config.ini._
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
-  _→ Automatically move completed input files to a separate folder_
+  _→ Automatically move completed input files to a separate folder preserving structure_
 - [x] Add compression function for output PDFs  
   _→ Preserve searchable text while applying JPEG-based compression_
 - [x] Fix where it suddenly creates output folder in the repository when running  
@@ -71,7 +74,7 @@ The following features and improvements are planned for future releases:
 - [x] Show real-time progress and current file being processed
 - [x] Add "Unavailable: Learn More?" button for missing Ghostscript with helpful dialog
 - [x] Improved error dialogs and resource cleanup
-- [x] Save and restore all user settings (including last-used paths, models, and compression options)
+- [x] Save and restore all user settings (including last-used paths, models, compression, and archiving options)
 - [x] Auto-detect Ghostscript in PATH and Program Files (uses highest version found)
 - [x] Robust logging to file for all sessions
 
@@ -112,7 +115,8 @@ python main.py
 2. Using the GUI:
    - Select input mode (Single File/Folder/PDF)
    - Choose input file(s) and output directory
-   - Configure processing options (DPI, output format)
+   - (Optional) Enable "Archiving?" and specify an archive directory to move processed input files/folders after OCR. The original folder structure will be preserved in the archive.
+   - Configure processing options (DPI, output format, compression)
    - Click "Start Processing" to begin OCR
 
 ### Input Formats Supported:
@@ -122,3 +126,12 @@ python main.py
 ### Output Formats:
 - Searchable PDFs
 - HOCR (HTML-based OCR) files
+
+### Archiving Option
+
+- If "Archiving?" is enabled, after successful processing, input files/folders are moved to the specified archive directory, preserving their folder structure.
+- Archive settings are saved in `config.ini` and restored on next launch.
+- If archiving is not enabled or the archive path is not specified, input files are not moved.
+- Proper error handling is provided if the archive directory is missing or invalid.
+
+---
