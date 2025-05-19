@@ -2,12 +2,12 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QPu
                            QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, 
                            QTextEdit, QComboBox, QFileDialog, QMessageBox,
                            QLineEdit, QDialogButtonBox, QSpinBox, QCheckBox,
-                           QFormLayout, QDialog, QProgressDialog)
+                           QFormLayout, QDialog, QProgressDialog, QSlider)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QThreadPool
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QPixmap
 import logging
 import sys
-import json
+import sysconfig
 import traceback
 import psutil
 from pathlib import Path
@@ -17,6 +17,7 @@ import torch
 import time
 import configparser
 import doctr.models as doctr_models
+import shutil  # Add this import
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -183,6 +184,11 @@ class MainWindow(QMainWindow):
         chunk_timeout = self.config.getint("Performance", "chunk_timeout", fallback=60)
         # Models: detection_model and recognition_model already set above
 
+        # Compression settings
+        compress_enabled = self.config.getboolean("General", "compress_enabled", fallback=False)
+        compression_type = self.config.get("General", "compression_type", fallback="jpeg")
+        compression_quality = self.config.getint("General", "compression_quality", fallback=100)
+
         self._config_values = {
             "dpi": dpi,
             "output_format": output_format,
@@ -198,6 +204,9 @@ class MainWindow(QMainWindow):
             "chunk_timeout": chunk_timeout,
             "detection_model": detection_model,
             "recognition_model": recognition_model,
+            "compress_enabled": compress_enabled,
+            "compression_type": compression_type,
+            "compression_quality": compression_quality,
         }
 
     def _create_ui(self):
@@ -269,6 +278,12 @@ class MainWindow(QMainWindow):
             idx = self.rec_model_combo.findData("parseq")
             if idx >= 0:
                 self.rec_model_combo.setCurrentIndex(idx)
+        # Compression settings
+        self.compress_checkbox.setChecked(v.get("compress_enabled", False))
+        idx = self.compression_type_combo.findText(v.get("compression_type", "JPEG").upper())
+        if idx >= 0:
+            self.compression_type_combo.setCurrentIndex(idx)
+        self.quality_slider.setValue(v.get("compression_quality", 100))
 
     def _save_config(self):
         """Save all GUI settings to config.ini"""
@@ -284,6 +299,10 @@ class MainWindow(QMainWindow):
         self.config.set("General", "theme_mode", self.theme_mode)
         self.config.set("General", "detection_model", self.det_model_combo.currentData())
         self.config.set("General", "recognition_model", self.rec_model_combo.currentData())
+        # Compression settings
+        self.config.set("General", "compress_enabled", str(self.compress_checkbox.isChecked()))
+        self.config.set("General", "compression_type", self.compression_type_combo.currentText().lower())
+        self.config.set("General", "compression_quality", str(self.quality_slider.value()))
         # Paths
         self.config.set("Paths", "single", str(self.selected_paths['single'] or ""))
         self.config.set("Paths", "folder", str(self.selected_paths['folder'] or ""))
@@ -811,6 +830,102 @@ class MainWindow(QMainWindow):
         self.det_model_combo.currentIndexChanged.connect(self._on_det_model_change)
         self.rec_model_combo.currentIndexChanged.connect(self._on_rec_model_change)
 
+        # --- Compression Options (move below model selection) ---
+        compression_layout = QHBoxLayout()
+        self.compress_checkbox = QCheckBox("Compress with PyPDFCompressor")
+        compression_layout.addWidget(self.compress_checkbox)
+
+        self.compression_type_combo = QComboBox()
+        self.compression_type_combo.addItems(["JPEG", "JPEG2000", "LZW", "PNG"])
+        self.compression_type_combo.setEnabled(False)
+        self.compression_type_combo.setCurrentIndex(0)  # Default to JPEG
+        compression_layout.addWidget(QLabel("Type:"))
+        compression_layout.addWidget(self.compression_type_combo)
+
+        self.quality_slider = QSlider(Qt.Orientation.Horizontal)
+        self.quality_slider.setMinimum(0)
+        self.quality_slider.setMaximum(100)
+        self.quality_slider.setValue(100)  # Default to 100%
+        self.quality_slider.setEnabled(False)
+        self.quality_slider.setFixedWidth(120)
+        compression_layout.addWidget(QLabel("Quality:"))
+        compression_layout.addWidget(self.quality_slider)
+
+        # Add dynamic label for quality percent
+        self.quality_label = QLabel("100%")
+        self.quality_label.setFixedWidth(40)
+        compression_layout.addWidget(self.quality_label)
+
+        # Add info button for Ghostscript status
+        from PyQt6.QtWidgets import QPushButton  # Ensure QPushButton is imported
+
+        self.compression_info_button = QPushButton("Unavailable: Learn More?")
+        self.compression_info_button.setVisible(False)
+        self.compression_info_button.setFixedHeight(24)
+        self.compression_info_button.setStyleSheet("QPushButton { color: #0078d7; border: none; background: transparent; text-decoration: underline; }")
+        compression_layout.addWidget(self.compression_info_button)
+
+        # Remove the old info icon
+        # self.compression_info_icon = QLabel()
+        # info_pix = QPixmap(16, 16)
+        # info_pix.fill(Qt.GlobalColor.transparent)
+        # self.compression_info_icon.setPixmap(info_pix)
+        # self.compression_info_icon.setVisible(False)
+        # compression_layout.addWidget(self.compression_info_icon)
+
+        parent_layout.addLayout(compression_layout)
+
+        # --- Ghostscript check and UI update ---
+        def check_ghostscript():
+            # Windows: gswin64c.exe, Linux/Mac: gs
+            gs_exe = "gswin64c.exe" if sys.platform.startswith("win") else "gs"
+            found = shutil.which(gs_exe) is not None
+            return found
+
+        def show_ghostscript_dialog():
+            QMessageBox.information(
+                self,
+                "Ghostscript Required",
+                "PDF compression requires Ghostscript (gswin64c.exe or gs) to be installed and available in your system PATH.\n\n"
+                "Please install Ghostscript and ensure it is accessible from the command line."
+            )
+
+        self.compression_info_button.clicked.connect(show_ghostscript_dialog)
+
+        def update_compression_controls():
+            gs_found = check_ghostscript()
+            enabled = self.compress_checkbox.isChecked() and gs_found
+            self.compression_type_combo.setEnabled(enabled)
+            ctype = self.compression_type_combo.currentText().lower()
+            self.quality_slider.setEnabled(enabled and ctype in ("jpeg", "jpeg2000"))
+            self.quality_label.setText(f"{self.quality_slider.value()}%")
+            self.quality_label.setEnabled(self.quality_slider.isEnabled())
+            self.compress_checkbox.setEnabled(gs_found)
+            # Button for Ghostscript info
+            if not gs_found:
+                self.compress_checkbox.setChecked(False)
+                self.compress_checkbox.setEnabled(False)
+                self.compression_type_combo.setEnabled(False)
+                self.quality_slider.setEnabled(False)
+                self.quality_label.setEnabled(False)
+                self.compression_info_button.setVisible(True)
+            else:
+                self.compress_checkbox.setEnabled(True)
+                self.compression_info_button.setVisible(False)
+
+        self.compress_checkbox.stateChanged.connect(update_compression_controls)
+        self.compression_type_combo.currentIndexChanged.connect(update_compression_controls)
+        self.quality_slider.valueChanged.connect(lambda v: self.quality_label.setText(f"{v}%"))
+        self.quality_slider.valueChanged.connect(update_compression_controls)
+
+        # --- Ensure controls are initialized correctly on startup ---
+        update_compression_controls()
+
+        # Only download the default models from config.ini at startup
+        self._populate_model_dropdowns(download_missing="startup")
+        self.det_model_combo.currentIndexChanged.connect(self._on_det_model_change)
+        self.rec_model_combo.currentIndexChanged.connect(self._on_rec_model_change)
+
     def _populate_model_dropdowns(self, download_missing=False):
         """
         Populate detection/recognition model dropdowns with available models and download status.
@@ -1253,6 +1368,12 @@ class MainWindow(QMainWindow):
     def _start_processing(self):
         """Start processing with improved error handling"""
         try:
+            # --- Sync compression settings to OCRProcessor before processing ---
+            if hasattr(self, 'ocr'):
+                self.ocr.compress_images = self.compress_checkbox.isChecked()
+                self.ocr.compression_type = self.compression_type_combo.currentText().lower()
+                self.ocr.compression_quality = self.quality_slider.value()
+            
             # Check if already processing
             if self.current_worker and self.current_worker.is_running:
                 QMessageBox.warning(self, "Warning", "Processing already in progress")
@@ -1786,6 +1907,10 @@ class MainWindow(QMainWindow):
                 detection_model=det_model,
                 recognition_model=rec_model
             )
+            # Set compression defaults
+            self.ocr.compress_images = self.compress_checkbox.isChecked()
+            self.ocr.compression_type = self.compression_type_combo.currentText().lower()
+            self.ocr.compression_quality = self.quality_slider.value()
             self._setup_logging()
             self._setup_file_logging()
             
@@ -1806,4 +1931,5 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             logger.error(f"Delayed initialization failed: {e}")
+           
             QMessageBox.critical(self, "Error", f"Failed to initialize: {e}")

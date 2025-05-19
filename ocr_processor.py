@@ -24,6 +24,7 @@ import tempfile
 import shutil
 from utils.thread_killer import ThreadKiller
 from utils.image_processor import ImageProcessor
+from utils.pypdfcompressor import compress_pdf  # Add this import
 
 # Disable PIL decompression bomb warning
 Image.MAX_IMAGE_PIXELS = None  # Add this line to remove the warning
@@ -35,6 +36,24 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# --- Logging setup: always log to both file and console (stdout) ---
+def _ensure_console_logging():
+    root_logger = logging.getLogger()
+    # Remove duplicate StreamHandlers (keep only one)
+    stream_handlers = [h for h in root_logger.handlers if isinstance(h, logging.StreamHandler)]
+    if len(stream_handlers) > 1:
+        # Keep only the first StreamHandler
+        for h in stream_handlers[1:]:
+            root_logger.removeHandler(h)
+    # Add StreamHandler if none exists
+    if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+_ensure_console_logging()
 
 def _check_gpu_support():
     """Check GPU support and return (is_available, reason, device_info)"""
@@ -598,8 +617,12 @@ class OCRProcessor:
             return None
         temp_hocr = None
         intermediate_pdf = None
-        
+
+        # --- Always define processed_image_path at the start ---
+        processed_image_path = image_path
         try:
+            # --- REMOVE: Compress image before PDF creation ---
+
             # Check cancellation state
             if self.is_cancelled or self._force_stop:
                 return None
@@ -626,16 +649,14 @@ class OCRProcessor:
             
             # Move input to correct device with error handling
             try:
-                docs = DocumentFile.from_images(str(image_path))
+                docs = DocumentFile.from_images(str(processed_image_path))
                 if self.device == 'cuda':
-                    # Force sync to catch CUDA errors early
                     torch.cuda.synchronize()
             except Exception as e:
-                logger.error(f"Error loading image {image_path}: {e}")
-                # Fallback to CPU if CUDA fails
+                logger.error(f"Error loading image {processed_image_path}: {e}")
                 self.device = 'cpu'
                 self.model = self.model.cpu()
-                docs = DocumentFile.from_images(str(image_path))
+                docs = DocumentFile.from_images(str(processed_image_path))
             
             if self.progress_callback:
                 if not self.progress_callback(25, 100):  # Document loaded
@@ -729,12 +750,10 @@ class OCRProcessor:
                             hocr_filename=str(temp_hocr),
                             dpi=dpi_to_use
                         )
-                        # Save to intermediate file first
                         hocr.to_pdf(
                             out_filename=str(intermediate_pdf),
-                            image_filename=str(image_path)
+                            image_filename=str(processed_image_path)
                         )
-                        
                         # Verify intermediate PDF was created and has content
                         if intermediate_pdf.exists() and intermediate_pdf.stat().st_size > 0:
                             if temp_pdf_path.exists():
@@ -757,6 +776,27 @@ class OCRProcessor:
                             time.sleep(1)  # Wait longer between retries
                         else:
                             raise last_error
+            
+            # --- NEW: Compress the PDF after creation ---
+            if "pdf" in self.output_formats:
+                # After temp_pdf_path is created and verified:
+                if getattr(self, "compress_images", False):
+                    try:
+                        # Compress the temp PDF and overwrite it
+                        compressed_pdf_path = temp_pdf_path.with_suffix(".compressed.pdf")
+                        compress_pdf(
+                            str(temp_pdf_path),
+                            str(compressed_pdf_path),
+                            quality=getattr(self, "compression_quality", 80),
+                            fast_mode=True
+                        )
+                        # Replace the original temp PDF with the compressed one
+                        if compressed_pdf_path.exists() and compressed_pdf_path.stat().st_size > 0:
+                            temp_pdf_path.unlink()
+                            compressed_pdf_path.rename(temp_pdf_path)
+                            logger.info(f"Compressed PDF: {temp_pdf_path}")
+                    except Exception as e:
+                        logger.warning(f"PDF compression failed: {e}")
             # Only signal completion if PDF was created successfully               
             if self.progress_callback and temp_pdf_path.exists() and temp_pdf_path.stat().st_size > 0:
                 self.progress_callback(100, 100)
@@ -786,6 +826,13 @@ class OCRProcessor:
                 except Exception as e:
                     logger.warning(f"Failed to cleanup intermediate PDF {intermediate_pdf}: {e}")
         
+            # Clean up compressed image if it was created
+            if getattr(self, "compress_images", False):
+                try:
+                    if processed_image_path != image_path and processed_image_path.exists():
+                        processed_image_path.unlink()
+                except Exception:
+                    pass
             # Safe GPU cleanup
             if torch.cuda.is_available():
                 try:
