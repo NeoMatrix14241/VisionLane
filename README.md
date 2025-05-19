@@ -134,5 +134,3 @@ python main.py
 - Archive settings are saved in `config.ini` and restored on next launch.
 - If archiving is not enabled or the archive path is not specified, input files are not moved.
 - Proper error handling is provided if the archive directory is missing or invalid.
-
----
