@@ -120,6 +120,9 @@ class MainWindow(QMainWindow):
             self.progress_monitor.timeout.connect(self._check_real_progress)
             self.progress_monitor.setInterval(250)  # Check 4 times per second
             
+            # Add theme state
+            self.theme_mode = "system"  # "system", "light", "dark", "night"
+            
             # Initialize GUI
             self.setWindowTitle("VisionLane OCR (Can't fix GUI so slow I wanna cry, disappear, and become a potato)")
             self.setMinimumSize(800, 400)
@@ -143,6 +146,8 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(main_widget)
         
         self._create_menu_bar()
+        # Apply initial theme after menu bar is created
+        self._apply_theme()
         self._create_input_section(layout)
         self._create_options_section(layout)
         self._create_status_section(layout)
@@ -331,9 +336,153 @@ class MainWindow(QMainWindow):
         path_config_action.triggered.connect(self._show_path_config)
         performance_options.triggered.connect(self._show_performance_options)
 
+        # Theme menu
+        theme_menu = menubar.addMenu("Theme")
+        self.action_theme_system = theme_menu.addAction("System Default")
+        self.action_theme_light = theme_menu.addAction("Light Mode")
+        self.action_theme_dark = theme_menu.addAction("Dark Mode")
+        self.action_theme_night = theme_menu.addAction("Night Mode")
+        self.action_theme_system.setCheckable(True)
+        self.action_theme_light.setCheckable(True)
+        self.action_theme_dark.setCheckable(True)
+        self.action_theme_night.setCheckable(True)
+        self.action_theme_group = [
+            self.action_theme_system,
+            self.action_theme_light,
+            self.action_theme_dark,
+            self.action_theme_night
+        ]
+        self.action_theme_system.setChecked(True)
+
+        self.action_theme_system.triggered.connect(lambda: self._set_theme_mode("system"))
+        self.action_theme_light.triggered.connect(lambda: self._set_theme_mode("light"))
+        self.action_theme_dark.triggered.connect(lambda: self._set_theme_mode("dark"))
+        self.action_theme_night.triggered.connect(lambda: self._set_theme_mode("night"))
+
         # Help menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About").triggered.connect(self._show_about)
+
+    def _set_theme_mode(self, mode):
+        """Set theme mode: system, light, dark, or night"""
+        self.theme_mode = mode
+        # Update check states
+        self.action_theme_system.setChecked(mode == "system")
+        self.action_theme_light.setChecked(mode == "light")
+        self.action_theme_dark.setChecked(mode == "dark")
+        self.action_theme_night.setChecked(mode == "night")
+        self._apply_theme()
+
+    def _apply_theme(self):
+        """Apply the current theme to the application (System, Light, Dark, or Night Mode)"""
+        if self.theme_mode == "night":
+            # Night mode stylesheet (custom, high-contrast)
+            night_stylesheet = """
+                QWidget {
+                    background-color: #232629;
+                    color: #F0F0F0;
+                }
+                QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {
+                    background-color: #31363b;
+                    color: #F0F0F0;
+                    border: 1px solid #555;
+                }
+                QPushButton {
+                    background-color: #31363b;
+                    color: #F0F0F0;
+                    border: 1px solid #555;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #555;
+                }
+                QMenuBar, QMenu {
+                    background-color: #232629;
+                    color: #F0F0F0;
+                }
+                QProgressBar {
+                    background-color: #31363b;
+                    color: #F0F0F0;
+                    border: 1px solid #555;
+                    text-align: center;
+                }
+                QProgressBar::chunk {
+                    background-color: #0078d7;
+                }
+            """
+            self.setStyleSheet(night_stylesheet)
+        elif self.theme_mode == "dark":
+            # Dark mode stylesheet (less contrast, more like system dark)
+            dark_stylesheet = """
+                QWidget {
+                    background-color: #2d2d30;
+                    color: #dddddd;
+                }
+                QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {
+                    background-color: #3c3c3c;
+                    color: #dddddd;
+                    border: 1px solid #444;
+                }
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #dddddd;
+                    border: 1px solid #444;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #444;
+                }
+                QMenuBar, QMenu {
+                    background-color: #2d2d30;
+                    color: #dddddd;
+                }
+                QProgressBar {
+                    background-color: #3c3c3c;
+                    color: #dddddd;
+                    border: 1px solid #444;
+                    text-align: center;
+                }
+                QProgressBar::chunk {
+                    background-color: #0078d7;
+                }
+            """
+            self.setStyleSheet(dark_stylesheet)
+        elif self.theme_mode == "light":
+            # Force a light stylesheet regardless of system
+            light_stylesheet = """
+                QWidget {
+                    background-color: #f6f6f6;
+                    color: #222222;
+                }
+                QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {
+                    background-color: #ffffff;
+                    color: #222222;
+                    border: 1px solid #cccccc;
+                }
+                QPushButton {
+                    background-color: #eaeaea;
+                    color: #222222;
+                    border: 1px solid #cccccc;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #cccccc;
+                }
+                QMenuBar, QMenu {
+                    background-color: #f6f6f6;
+                    color: #222222;
+                }
+                QProgressBar {
+                    background-color: #eaeaea;
+                    color: #222222;
+                    border: 1px solid #cccccc;
+                    text-align: center;
+                }
+                QProgressBar::chunk {
+                    background-color: #0078d7;
+                }
+            """
+            self.setStyleSheet(light_stylesheet)
+        else:
+            # System default: clear stylesheet, let OS/PyQt6 decide
+            self.setStyleSheet("")
 
     def _create_input_section(self, parent_layout):
         self.tab_widget = QTabWidget()
@@ -631,7 +780,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'progress_timer'):
                 self.progress_timer.stop()
             if hasattr(self, 'progress_monitor'):
-                self.progress_monitor.stop()
+                self.progress_monitor.stop();
             
             # Reset progress counters
             self.processed_files = 0
