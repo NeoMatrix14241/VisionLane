@@ -41,7 +41,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 
 - Python 3.10 or higher (Tested from 3.10 to 3.12.6)
 - NVIDIA GPU with 8GB+ RAM and CUDA/recently supported drivers (optional, else will fallback to CPU)
-- Windows/Linux OS
+- Windows
 - [Ghostscript](https://www.ghostscript.com/releases/gsdnld.html) (required **only** for PDF compression features; optional otherwise)
 
 ## Roadmap
@@ -89,11 +89,7 @@ cd VisionLane
 2. Create and activate a virtual environment:
 ```bash
 python -m venv .venv
-# On Windows:
 .venv\Scripts\activate
-# On Linux/Mac:
-source .venv/bin/activate
-```
 
 3. Install dependencies:
 ```bash
