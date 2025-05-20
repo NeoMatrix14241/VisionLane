@@ -28,13 +28,13 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - 🌙 Dark mode, light mode, and night mode themes with system default support
 - 🧩 User-selectable DocTR detection and recognition models with auto-download if missing
 - ⚙️ Configurable DPI, output format, and compression options (JPEG, JPEG2000, LZW, PNG)
-- 🗜️ PDF compression with Ghostscript auto-detection (PATH or Program Files, highest version auto-selected)
+- 🗜️ PDF compression with GhostScript auto-detection (PATH or Program Files, highest version auto-selected)
 - 🛠️ Performance tuning: adjustable thread count and timeouts
 - 🧹 Safe resource cleanup and robust error handling
 - 📂 Remembers last used input/output directories and settings
 - 🖼️ Real-time progress display with current file and processed count
 - 🔒 Settings saved to config.ini for persistent preferences
-- 🧭 Guided dialogs for missing dependencies (e.g., Ghostscript "Learn More" button)
+- 🧭 Guided dialogs for missing dependencies (e.g., GhostScript "Learn More" button)
 - 📝 Logging to file for troubleshooting
 - 📦 **Archiving Option:** After processing, optionally move input files/folders to a specified archive directory, preserving the original folder structure. Archiving is configurable per input mode and settings are saved in config.ini.
 
@@ -43,7 +43,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - Python 3.10 or higher (Tested from 3.10 to 3.12.6)
 - [REQUIRED / CRITICAL] NVIDIA GPU with 8GB+ RAM (Important or it will crash then you have to restart the App) and CUDA/recently supported drivers (optional, else will fallback to CPU)
 - Windows 10 or Higher
-- [Ghostscript](https://www.ghostscript.com/releases/gsdnld.html) (required **only** for PDF compression features; optional otherwise)
+- [GhostScript](https://www.GhostScript.com/releases/gsdnld.html) (required **only** for PDF compression features; optional otherwise)
 
 ## Roadmap
 
@@ -80,10 +80,10 @@ The following features and improvements are planned for future releases:
 - [x] Add night mode and improved theme switching
 - [x] Change GUI style/theme
 - [x] Show real-time progress and current file being processed
-- [x] Add "Unavailable: Learn More?" button for missing Ghostscript with helpful dialog
+- [x] Add "Unavailable: Learn More?" button for missing GhostScript with helpful dialog
 - [x] Improved error dialogs and resource cleanup
 - [x] Save and restore all user settings (including last-used paths, models, compression, and archiving options)
-- [x] Auto-detect Ghostscript in PATH and Program Files (uses highest version found)
+- [x] Auto-detect GhostScript in PATH and Program Files (uses highest version found)
 - [x] Robust logging to file for all sessions
 
 ## Installation
