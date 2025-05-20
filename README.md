@@ -6,7 +6,8 @@
 
 A powerful OCR (Optical Character Recognition) application built with DocTR and PyQt6, designed for high-performance document processing with GPU acceleration support.
 
-![image](https://github.com/user-attachments/assets/1fe96388-e0bb-47c9-8b6a-61ffed93f729)
+![image](https://github.com/user-attachments/assets/8a9a95dc-bb9e-4921-a1fa-d60e9332c01f)
+
 
 ![Apache License](https://img.shields.io/badge/license-Apache-blue.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
@@ -56,6 +57,7 @@ The following features and improvements are planned for future releases:
 - [x] Implement a config file to persist user settings  
   _→ Save UI preferences, text detection and text recognition model selections, input/output/archive options, select processor if CPU or GPU etc._
 - [x] **Archiving option for processed files**  
+- [x] **Hotfix:** App builder now includes all modules needed for PyPDFCompressor
   _→ Optionally move processed input files/folders to a specified archive directory, preserving folder structure. Archive settings are saved and restored from config.ini._
 - [ ] Add an option to switch GPU and CPU  
   _→ GPU acceleration can be disabled and use CPU instead_
@@ -75,6 +77,7 @@ The following features and improvements are planned for future releases:
   _→ Supports system default, with manual switch option_  
   _→ Includes various bug fixes to the GUI also_
 - [x] Add night mode and improved theme switching
+- [x] Change GUI style/theme
 - [x] Show real-time progress and current file being processed
 - [x] Add "Unavailable: Learn More?" button for missing Ghostscript with helpful dialog
 - [x] Improved error dialogs and resource cleanup
