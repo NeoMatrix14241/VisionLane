@@ -57,8 +57,9 @@ The following features and improvements are planned for future releases:
 - [x] Implement a config file to persist user settings  
   _→ Save UI preferences, text detection and text recognition model selections, input/output/archive options, select processor if CPU or GPU etc._
 - [x] **Archiving option for processed files**  
-- [x] **Hotfix:** App builder now includes all modules needed for PyPDFCompressor
   _→ Optionally move processed input files/folders to a specified archive directory, preserving folder structure. Archive settings are saved and restored from config.ini._
+- [x] **Hotfix:** App builder now includes all modules needed for PyPDFCompressor  
+  _→ The module: fitz (PyMuPDF) are not included in buikld.spec file which is required for PyPDFCompressor 
 - [ ] Add an option to switch GPU and CPU  
   _→ GPU acceleration can be disabled and use CPU instead_
 - [ ] Add a function to check if the recommended 8GB VRAM is met, else suggest to switch to CPU  
