@@ -43,7 +43,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - Python 3.10 or higher (Tested from 3.10 to 3.12.6)
 - [REQUIRED / CRITICAL] NVIDIA GPU with 8GB+ RAM (Important or it will crash then you have to restart the App) and CUDA/recently supported drivers (optional, else will fallback to CPU)
 - Windows 10 or Higher
-- [GhostScript](https://www.GhostScript.com/releases/gsdnld.html) (required **only** for PDF compression features; optional otherwise)
+- [GhostScript](https://www.ghostscript.com/releases/gsdnld.html) (required **only** for PDF compression features; optional otherwise)
 
 ## Roadmap
 
