@@ -78,24 +78,30 @@ hiddenimports = [
     'tqdm',
     'colorama',
     'typing_extensions',
-    # Add the base onnx module - but exclude onnx.reference which is causing the crash
-    'onnx',
-    'onnx.defs',
-    'onnx.backend',
-    'onnx.checker',
-    'onnx.helper',
-    'onnx.mapping',
-    'onnx.numpy_helper',
-    'onnx.shape_inference',
-    'onnx.version',
+    'fitz',
+    'PyMuPDF',
+    # --- Add your own modules ---
+    'gui.main_window',
+    'gui.splash_screen',
+    'gui.processing_thread',
+    'gui.log_handler',
+    'ocr_processor',
+    'utils.process_manager',
+    'utils.thread_killer',
+    'utils.logging_config',
+    'utils.safe_logger',
+    'utils.image_processor',
+    'utils.pypdfcompressor',
+    'utils.debug_helper',
 ]
 
 # Add package submodules PyInstaller may miss 
-# BUT exclude the problematic onnx.reference and related modules
 hiddenimports += collect_submodules('ocrmypdf')
 hiddenimports += collect_submodules('doctr')
 hiddenimports += collect_submodules('pdfminer')
 hiddenimports += collect_submodules('PyQt6')
+hiddenimports += collect_submodules('fitz')
+hiddenimports += collect_submodules('PyMuPDF')
 
 # Remove any excluded modules from hiddenimports
 hiddenimports = [m for m in hiddenimports if not any(m.startswith(ex) for ex in excludes)]
@@ -137,6 +143,8 @@ datas += collect_data_files('ocrmypdf')
 datas += collect_data_files('doctr')
 datas += collect_data_files('PIL')
 datas += collect_data_files('pdfminer')
+# --- ADD PyMuPDF DATA FILES ---
+datas += collect_data_files('PyMuPDF')
 
 # OCRmyPDF resources
 try:

@@ -802,7 +802,8 @@ class OCRProcessor:
                             str(temp_pdf_path),
                             str(compressed_pdf_path),
                             quality=getattr(self, "compression_quality", 80),
-                            fast_mode=True
+                            fast_mode=True,
+                            compression_type=getattr(self, "compression_type", "jpeg")  # <-- add this
                         )
                         # Replace the original temp PDF with the compressed one
                         if compressed_pdf_path.exists() and compressed_pdf_path.stat().st_size > 0:

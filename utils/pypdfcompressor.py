@@ -11,6 +11,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import psutil
+import shutil
 
 # --- Simple image compression utility for OCR pipeline ---
 def compress_image(input_path, output_path, quality=80, compression_type="jpeg"):
@@ -269,7 +270,7 @@ class PDFProcessor:
             self.log_with_timestamp(f"Error processing {input_path}: {str(e)}", "error")
             return False
 
-    def compress_pdf(self, input_path: str, output_path: str, quality: int = 50, fast_mode: bool = True) -> bool:
+    def compress_pdf(self, input_path: str, output_path: str, quality: int = 50, fast_mode: bool = True, compression_type: str = "jpeg") -> bool:
         """Compress a single PDF file while preserving DPI and OCR layers."""
         try:
             # Convert to absolute paths
@@ -297,19 +298,55 @@ class PDFProcessor:
             # Create output directory if it doesn't exist
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
+            # --- Find Ghostscript executable ---
+            import sys
+            if sys.platform.startswith("win"):
+                exe_name = "gswin64c.exe"
+                gs_path = None
+                # 1. Check PATH
+                gs_path = shutil.which(exe_name)
+                if not gs_path:
+                    # 2. Search in Program Files locations
+                    import re
+                    from pathlib import Path
+                    search_dirs = [
+                        Path("C:/Program Files/gs"),
+                        Path("C:/Program Files (x86)/gs"),
+                    ]
+                    found = []
+                    for base in search_dirs:
+                        if base.exists():
+                            for sub in base.iterdir():
+                                if sub.is_dir():
+                                    exe = sub / "bin" / exe_name
+                                    if exe.exists():
+                                        m = re.search(r'(\d+(\.\d+)*)', sub.name)
+                                        version = tuple(map(int, m.group(1).split('.'))) if m else (0,)
+                                        found.append((version, exe))
+                    if found:
+                        found.sort(reverse=True)
+                        gs_path = str(found[0][1])
+                if not gs_path:
+                    self.log_with_timestamp("Ghostscript not found! PDF compression will not run.", "error")
+                    return False
+            else:
+                exe_name = "gs"
+                gs_path = shutil.which(exe_name)
+                if not gs_path:
+                    self.log_with_timestamp("Ghostscript not found! PDF compression will not run.", "error")
+                    return False
+
             # Prepare Ghostscript command with quoted paths
             gs_call = [
-                'gswin64c.exe',
+                f'"{gs_path}"',
                 '-sDEVICE=pdfwrite',
                 '-dCompatibilityLevel=1.5',
                 '-dNOPAUSE',
                 '-dBATCH',
                 '-dSAFER',
-                '-dPrinted=false',  # Add this line
+                '-dPrinted=false',
                 '-dPreserveAnnots=true',
                 '-dAutoRotatePages=/None',
-                '-dPreservePDFObjects=true',
-                '-dPreserveMarkedContent=true',
                 '-dPreserveStructure=true',
                 f'-dCompressFonts=true',
                 f'-dCompressPages=true',
@@ -319,7 +356,37 @@ class PDFProcessor:
                 '-dGrayImageDownsampleType=/Bicubic',
                 '-dMonoImageDownsampleType=/Bicubic',
                 f'-dColorImageDepth={8 if quality < 50 else 16 if quality < 85 else 24}',
+                # --- Force recompression ---
+                '-dEncodeColorImages=true',
+                '-dEncodeGrayImages=true',
+                '-dDownsampleColorImages=true',
+                '-dDownsampleGrayImages=true',
             ]
+
+            # --- Add compression type logic ---
+            # See: https://ghostscript.com/doc/current/VectorDevices.htm#PDFWRITE
+            ctype = (compression_type or "jpeg").lower()
+            if ctype == "jpeg":
+                gs_call += [
+                    '-dColorImageFilter=/DCTEncode',
+                    '-dGrayImageFilter=/DCTEncode',
+                ]
+            elif ctype == "jpeg2000":
+                gs_call += [
+                    '-dColorImageFilter=/JPXEncode',
+                    '-dGrayImageFilter=/JPXEncode',
+                ]
+            elif ctype == "lzw":
+                gs_call += [
+                    '-dColorImageFilter=/LZWEncode',
+                    '-dGrayImageFilter=/LZWEncode',
+                ]
+            elif ctype == "png":
+                gs_call += [
+                    '-dColorImageFilter=/FlateEncode',
+                    '-dGrayImageFilter=/FlateEncode',
+                ]
+            # else: default to JPEG
 
             if original_dpi:
                 gs_call.extend([
@@ -336,20 +403,21 @@ class PDFProcessor:
 
             # Execute compression
             self.log_with_timestamp(f"Starting compression with command: {' '.join(gs_call)}", thread_name=thread_name)
-            # --- PATCH: Suppress flashing window on Windows ---
             run_kwargs = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True,
                 shell=True
             )
-            import sys
             if sys.platform.startswith("win"):
                 run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             process = subprocess.run(
                 ' '.join(gs_call),
                 **run_kwargs
             )
+            # --- Print Ghostscript output for debugging ---
+            self.log_with_timestamp(f"Ghostscript stdout: {process.stdout}", thread_name=thread_name)
+            self.log_with_timestamp(f"Ghostscript stderr: {process.stderr}", thread_name=thread_name)
 
             if process.returncode == 0 and os.path.exists(output_path):
                 initial_size = os.path.getsize(input_path) / (1024 * 1024)  # Convert to MB
@@ -467,12 +535,12 @@ class PDFProcessor:
 
 
 # Export compress_pdf for import in ocr_processor.py
-def compress_pdf(input_path, output_path, quality=50, fast_mode=True):
+def compress_pdf(input_path, output_path, quality=50, fast_mode=True, compression_type="jpeg"):
     """
     Compress a PDF file using Ghostscript.
     """
     processor = PDFProcessor()
-    return processor.compress_pdf(input_path, output_path, quality, fast_mode)
+    return processor.compress_pdf(input_path, output_path, quality, fast_mode, compression_type=compression_type)
 
 def main():
     parser = argparse.ArgumentParser(

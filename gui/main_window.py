@@ -2,7 +2,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QPu
                            QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, 
                            QComboBox, QFileDialog, QMessageBox,
                            QLineEdit, QDialogButtonBox, QSpinBox, QCheckBox,
-                           QFormLayout, QDialog, QProgressDialog, QSlider)
+                           QFormLayout, QDialog, QProgressDialog, QSlider,
+                           QGridLayout)
 from PyQt6.QtCore import Qt, QTimer, QThreadPool
 from PyQt6.QtGui import QIcon
 import logging
@@ -258,7 +259,15 @@ class MainWindow(QMainWindow):
             self.single_file_label.setText(f"Selected: {Path(v['last_single']).name}")
         if v["last_folder"]:
             self.selected_paths['folder'] = Path(v["last_folder"])
-            self.folder_label.setText(f"Selected: {Path(v['last_folder']).name}")
+            # --- Update label with found images and PDFs count ---
+            supported_files = self._count_supported_files(v["last_folder"])
+            if supported_files:
+                self.folder_label.setText(
+                    f"Selected: {v['last_folder']}\n"
+                    f"Found: {supported_files['images']} images, {supported_files['pdfs']} PDFs"
+                )
+            else:
+                self.folder_label.setText(f"Selected: {v['last_folder']}")
         if v["last_pdf"]:
             self.selected_paths['pdf'] = Path(v["last_pdf"])
             self.pdf_label.setText(f"Selected: {Path(v['last_pdf']).name}")
@@ -445,11 +454,9 @@ class MainWindow(QMainWindow):
     def _setup_logging(self):
         """Setup file-only logging"""
         logger = logging.getLogger()
-        
-        # Remove existing handlers
+        # Remove all existing handlers to avoid duplicates
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)
-            
         # Only setup file handler, no GUI logging
         self._setup_file_logging()
 
@@ -475,11 +482,10 @@ class MainWindow(QMainWindow):
             # Get logger
             logger = logging.getLogger()
             
-            # Remove existing handlers
+            # Remove all existing handlers (not just file handlers)
             for handler in logger.handlers[:]:
-                if isinstance(handler, logging.FileHandler):
-                    handler.close()
-                    logger.removeHandler(handler)
+                handler.close()
+                logger.removeHandler(handler)
             
             # Add new handler
             logger.addHandler(file_handler)
@@ -662,77 +668,95 @@ class MainWindow(QMainWindow):
     def _create_input_section(self, parent_layout):
         self.tab_widget = QTabWidget()
         self.tab_widget.setMaximumHeight(200)  # Limit tab height
-        
-        # Styles for labels and buttons
+
         label_style = "QLabel { font-size: 10pt; padding: 5px; }"
         btn_style = """
             QPushButton { 
                 font-size: 10pt; 
-                padding: 5px 10px;
+                padding: 1px 10px;
                 min-height: 25px;
                 max-height: 30px;
             }
         """
-        
-        # Common function to create a tab
+
+        # --- Helper for grid-aligned tab ---
         def create_tab(title, select_btn_text):
             widget = QWidget()
-            layout = QVBoxLayout(widget)
-            layout.setSpacing(15)
-            layout.setContentsMargins(10, 10, 10, 10)
+            grid = QGridLayout(widget)
+            grid.setContentsMargins(15, 15, 15, 15)
+            grid.setHorizontalSpacing(8)
+            grid.setVerticalSpacing(8)
 
-            # Input selection
+            # Input selection row
             select_btn = QPushButton(select_btn_text)
             select_btn.setStyleSheet(btn_style)
+            select_btn.setMinimumWidth(140)
+            select_btn.setMaximumWidth(160)
             label = QLabel("No file selected")
             label.setStyleSheet(label_style)
+            label.setWordWrap(True)
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            label.setMinimumHeight(32)
+            grid.addWidget(select_btn, 0, 0)
+            grid.addWidget(label, 0, 1, 1, 2)
 
-            # Output selection
-            out_layout = QHBoxLayout()
-            out_layout.setSpacing(5)
+            # Output selection row
             output_path = QLineEdit()
             output_path.setPlaceholderText("Output directory")
             output_path.setMinimumHeight(25)
+            output_path.setMinimumWidth(220)
             browse_btn = QPushButton("Browse Output")
             browse_btn.setStyleSheet(btn_style)
             browse_btn.setMinimumWidth(120)
             browse_btn.setMaximumWidth(120)
-            out_layout.addWidget(output_path, stretch=4)
-            out_layout.addWidget(browse_btn, stretch=1)
-            layout.addWidget(select_btn)
-            layout.addWidget(label)
-            layout.addLayout(out_layout)
+            grid.addWidget(QLabel("Output:"), 1, 0)
+            grid.addWidget(output_path, 1, 1)
+            grid.addWidget(browse_btn, 1, 2)
 
-            # --- Archive row below output directory row ---
-            archive_layout = QHBoxLayout()
+            # Archive row below output directory row
             archive_checkbox = QCheckBox("Archiving?")
             archive_dir = QLineEdit()
             archive_dir.setPlaceholderText("Archive directory")
             archive_dir.setMinimumHeight(25)
+            archive_dir.setMinimumWidth(220)
             archive_browse_btn = QPushButton("Browse Archive")
             archive_browse_btn.setStyleSheet(btn_style)
             archive_browse_btn.setMinimumWidth(120)
             archive_browse_btn.setMaximumWidth(120)
-            # Enable/disable archive_dir and browse button based on checkbox
+            grid.addWidget(archive_checkbox, 2, 0)
+            grid.addWidget(archive_dir, 2, 1)
+            grid.addWidget(archive_browse_btn, 2, 2)
+
+            # --- Archive checkbox logic: relative to output dir ---
             def on_archive_checked(state):
-                enabled = state == 2  # 2 == Checked, 0 == Unchecked
+                enabled = state == 2  # 2 == Checked
                 archive_dir.setEnabled(enabled)
                 archive_browse_btn.setEnabled(enabled)
+                if enabled and not archive_dir.text().strip():
+                    # Default: output_dir/archive
+                    out_dir = output_path.text().strip()
+                    if out_dir:
+                        archive_dir.setText(str(Path(out_dir) / "archive"))
             archive_checkbox.stateChanged.connect(on_archive_checked)
-            # Set initial state based on checkbox
+            # Set initial state
             on_archive_checked(archive_checkbox.checkState())
-            archive_layout.addWidget(archive_checkbox)
-            archive_layout.addWidget(archive_dir, stretch=4)
-            archive_layout.addWidget(archive_browse_btn, stretch=1)
-            layout.addLayout(archive_layout)
+
+            # --- Output browse updates archive dir if checked ---
+            def on_output_changed(text):
+                if archive_checkbox.isChecked():
+                    archive_dir.setText(str(Path(text) / "archive"))
+            output_path.textChanged.connect(on_output_changed)
+
             # Store references for later use
             widget._archive_checkbox = archive_checkbox
             widget._archive_dir = archive_dir
             widget._archive_browse_btn = archive_browse_btn
+            widget._output_path = output_path
 
-            layout.addStretch()
+            # Add stretch at the bottom
+            grid.setRowStretch(3, 1)
             return widget, select_btn, label, output_path, browse_btn, archive_checkbox, archive_dir, archive_browse_btn
-        
+
         # Single File tab
         single_widget, select_file_btn, self.single_file_label, self.single_output_path, single_browse_btn, \
             self.single_archive_checkbox, self.single_archive_dir, self.single_archive_browse_btn = create_tab(
@@ -742,7 +766,7 @@ class MainWindow(QMainWindow):
         single_browse_btn.clicked.connect(lambda: self._browse_output(self.single_output_path))
         self.single_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.single_archive_dir))
         self.tab_widget.addTab(single_widget, "Single File")
-        
+
         # Folder tab
         folder_widget, select_folder_btn, self.folder_label, self.folder_output_path, folder_browse_btn, \
             self.folder_archive_checkbox, self.folder_archive_dir, self.folder_archive_browse_btn = create_tab(
@@ -752,7 +776,7 @@ class MainWindow(QMainWindow):
         folder_browse_btn.clicked.connect(lambda: self._browse_output(self.folder_output_path))
         self.folder_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.folder_archive_dir))
         self.tab_widget.addTab(folder_widget, "Folder")
-        
+
         # PDF tab
         pdf_widget, select_pdf_btn, self.pdf_label, self.pdf_output_path, pdf_browse_btn, \
             self.pdf_archive_checkbox, self.pdf_archive_dir, self.pdf_archive_browse_btn = create_tab(
@@ -762,8 +786,8 @@ class MainWindow(QMainWindow):
         pdf_browse_btn.clicked.connect(lambda: self._browse_output(self.pdf_output_path))
         self.pdf_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.pdf_archive_dir))
         self.tab_widget.addTab(pdf_widget, "PDF")
-        
-        # Add tab widget to parent layout with reduced height
+
+        # Add tab widget to parent layout
         parent_layout.addWidget(self.tab_widget)
 
         # Restore config values for input/output paths and update labels
@@ -777,7 +801,7 @@ class MainWindow(QMainWindow):
         # Folder
         if v.get("last_folder"):
             self.selected_paths['folder'] = Path(v["last_folder"])
-            self.folder_label.setText(f"Selected: {Path(v['last_folder']).name}")
+            self.folder_label.setText(f"Selected: {v['last_folder']}")
         if v.get("last_output_folder"):
             self.folder_output_path.setText(v["last_output_folder"])
         # PDF
@@ -825,13 +849,12 @@ class MainWindow(QMainWindow):
         )
         if folder_path:
             self.selected_paths['folder'] = Path(folder_path)
-            self.folder_label.setText(f"Selected: {Path(folder_path).name}")
-            
+            self.folder_label.setText(f"Selected: {folder_path}")
             # Count files
             supported_files = self._count_supported_files(folder_path)
             if supported_files:
                 self.folder_label.setText(
-                    f"Selected: {Path(folder_path).name}\n"
+                    f"Selected: {folder_path}\n"
                     f"Found: {supported_files['images']} images, {supported_files['pdfs']} PDFs"
                 )
 
@@ -1400,6 +1423,10 @@ class MainWindow(QMainWindow):
                 # Show completion message and wait for user response
                 QMessageBox.information(self, "Success", "Processing completed successfully!")
             
+            # --- Refresh folder label after process finished (for folder tab) ---
+            if self.tab_widget.currentIndex() == 1:
+                self._refresh_folder_label()
+            
             # Only reset the state after user has seen completion message
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
@@ -1475,6 +1502,10 @@ class MainWindow(QMainWindow):
     def _start_processing(self):
         """Start processing with improved error handling and archiving support"""
         try:
+            # --- Refresh folder label before processing ---
+            if self.tab_widget.currentIndex() == 1:
+                self._refresh_folder_label()
+            
             # --- Sync compression settings to OCRProcessor before processing ---
             if hasattr(self, 'ocr'):
                 self.ocr.compress_images = self.compress_checkbox.isChecked()
@@ -1606,6 +1637,9 @@ class MainWindow(QMainWindow):
                         if success and not self.ocr.is_cancelled:
                             logger.info("Processing finished successfully, starting archiving.")
                             do_archive()
+                        # --- Refresh folder label after processing (and archiving) ---
+                        if self.tab_widget.currentIndex() == 1:
+                            self._refresh_folder_label()
                         self._process_finished(success)
                     try:
                         self.current_worker.signals.finished.disconnect()
@@ -1616,6 +1650,17 @@ class MainWindow(QMainWindow):
                     logger.error(f"Archiving setup error: {e}")
                     QMessageBox.critical(self, "Archiving Error", f"Failed to setup archiving:\n{e}")
 
+            else:
+                # --- If not archiving, still refresh after processing ---
+                def on_finished_no_archive(success):
+                    if self.tab_widget.currentIndex() == 1:
+                        self._refresh_folder_label()
+                    self._process_finished(success)
+                try:
+                    self.current_worker.signals.finished.disconnect()
+                except Exception:
+                    pass
+                self.current_worker.signals.finished.connect(on_finished_no_archive)
         except Exception as e:
             logger.error(f"Error starting processing: {e}", exc_info=True)
             self._handle_error(str(e))
@@ -1762,6 +1807,21 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error updating progress: {e}")
 
+    def _refresh_folder_label(self):
+        """Update the folder label with the current count of images and PDFs."""
+        folder_path = self.selected_paths.get('folder')
+        if folder_path and Path(folder_path).exists():
+            supported_files = self._count_supported_files(str(folder_path))
+            if supported_files:
+                self.folder_label.setText(
+                    f"Selected: {folder_path}\n"
+                    f"Found: {supported_files['images']} images, {supported_files['pdfs']} PDFs"
+                )
+            else:
+                self.folder_label.setText(f"Selected: {folder_path}")
+        else:
+            self.folder_label.setText("No folder selected")
+
     def _process_finished(self, success):
         """Handle process completion"""
         try:
@@ -1775,6 +1835,10 @@ class MainWindow(QMainWindow):
             if success and not self.ocr.is_cancelled:
                 # Show completion message and wait for user response
                 QMessageBox.information(self, "Success", "Processing completed successfully!")
+            
+            # --- Refresh folder label after process finished (for folder tab) ---
+            if self.tab_widget.currentIndex() == 1:
+                self._refresh_folder_label()
             
             # Only reset the state after user has seen completion message
             self.start_button.setEnabled(True)
@@ -2092,8 +2156,8 @@ class MainWindow(QMainWindow):
             self.ocr.compress_images = self.compress_checkbox.isChecked()
             self.ocr.compression_type = self.compression_type_combo.currentText().lower()
             self.ocr.compression_quality = self.quality_slider.value()
+            # Only setup logging ONCE here
             self._setup_logging()
-            self._setup_file_logging()
             
             # Setup timers
             self.hw_timer = QTimer(self)
