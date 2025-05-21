@@ -58,11 +58,15 @@ The following features and improvements are planned for future releases:
 - [x] **Archiving option for processed files**  
   _→ Optionally move processed input files/folders to a specified archive directory, preserving folder structure. Archive settings are saved and restored from config.ini._
 - [x] **Hotfix:** App builder now includes all modules needed for PyPDFCompressor  
-  _→ The module: fitz (PyMuPDF) are not included in buikld.spec file which is required for PyPDFCompressor 
+  _→ The module: fitz (PyMuPDF) are not included in build.spec file which is required for PyPDFCompressor_
+- [x] **Hotfix:** Removed PyMuPDF/fitz import/module  
+  _→ PDF compression now relies solely on Ghostscript; all fitz/PyMuPDF code and dependencies have been removed for better compatibility for Nuitka._
 - [ ] Add an option to switch GPU and CPU  
   _→ GPU acceleration can be disabled and use CPU instead_
 - [ ] Add a function to check if the recommended 8GB VRAM is met, else suggest to switch to CPU  
   _→ Below 6GB are crashing often based on my tests_
+- [ ] Add super-image enhancement to standardize image sizes  
+  _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  

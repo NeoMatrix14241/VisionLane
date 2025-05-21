@@ -2,8 +2,6 @@
 import os
 import argparse
 import subprocess
-from typing import Optional, Dict
-import fitz  # PyMuPDF
 from datetime import datetime, timezone
 import time
 from tqdm import tqdm
@@ -12,59 +10,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import psutil
 import shutil
-
-# --- Simple image compression utility for OCR pipeline ---
-def compress_image(input_path, output_path, quality=80, compression_type="jpeg"):
-    """
-    Compress an image using PyMuPDF and save to output_path.
-    Supports 'jpeg', 'jpeg2000', 'png' for compression_type.
-    Only the first page is used for multi-page TIFFs.
-    """
-    try:
-        orig_size = os.path.getsize(input_path) if os.path.exists(input_path) else None
-        logger.info(f"[PyPDFCompressor] Compressing: {input_path} -> {output_path} | type={compression_type} | quality={quality}")
-        if orig_size:
-            logger.info(f"[PyPDFCompressor] Original size: {orig_size/1024:.1f} KB")
-        doc = fitz.open(input_path)
-        page = doc[0]
-        pix = page.get_pixmap()
-        fmt = compression_type.lower()
-        if fmt == "jpeg":
-            ext = "jpg"
-            # PyMuPDF's tobytes("jpg") does NOT support quality in recent versions.
-            # Use PIL for JPEG compression with quality.
-            from PIL import Image
-            import io
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            img.save(output_path, "JPEG", quality=int(quality))
-        elif fmt == "jpeg2000":
-            ext = "jp2"
-            img_bytes = pix.tobytes("jp2")
-            with open(output_path, "wb") as f:
-                f.write(img_bytes)
-        elif fmt == "png":
-            ext = "png"
-            img_bytes = pix.tobytes("png")
-            with open(output_path, "wb") as f:
-                f.write(img_bytes)
-        elif fmt == "lzw":
-            ext = "tif"
-            pix.save(output_path)  # TIFF, no quality option
-        else:
-            pix.save(output_path)
-        doc.close()
-        # Double check file was written and is not empty
-        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            raise RuntimeError(f"Compression failed, output not created: {output_path}")
-        out_size = os.path.getsize(output_path)
-        logger.info(f"[PyPDFCompressor] Compressed size: {out_size/1024:.1f} KB")
-        if orig_size:
-            ratio = (out_size/orig_size)*100 if orig_size else 0
-            logger.info(f"[PyPDFCompressor] Compression ratio: {ratio:.1f}%")
-    except Exception as e:
-        logger.error(f"[PyPDFCompressor] ERROR: {e}")
-        raise RuntimeError(f"PyMuPDF compression failed: {e}")
-
 
 # Set up logging with more detailed format
 logging.basicConfig(
@@ -95,183 +40,8 @@ class PDFProcessor:
         else:
             logger.info(f"{timestamp} - {thread_info}{message}")
 
-    def get_quick_pdf_info(
-        self, pdf_path: str, thread_name: str = None
-    ) -> Optional[int]:
-        """Quick PDF analysis - just gets basic info without page-by-page analysis"""
-        try:
-            doc = fitz.open(pdf_path)
-            file_size_mb = os.path.getsize(pdf_path) / (1024 * 1024)
-
-            self.log_with_timestamp(
-                f"\nQuick Analysis of: {os.path.basename(pdf_path)}",
-                thread_name=thread_name,
-            )
-            self.log_with_timestamp(
-                f"- Total Pages: {len(doc)}", thread_name=thread_name
-            )
-            self.log_with_timestamp(
-                f"- File Size: {file_size_mb:.2f} MB", thread_name=thread_name
-            )
-
-            # Quick check of first page only for DPI
-            if len(doc) > 0:
-                first_page = doc[0]
-                image_list = first_page.get_images()
-                max_dpi = 0
-                for img in image_list:
-                    xref = img[0]
-                    image = doc.extract_image(xref)
-                    if image and "dpi" in image:
-                        max_dpi = max(max_dpi, max(image.get("dpi", (0, 0))))
-
-                if max_dpi > 0:
-                    self.log_with_timestamp(
-                        f"- Sample DPI (first page): {max_dpi}", thread_name=thread_name
-                    )
-
-            doc.close()
-            return max_dpi if max_dpi > 0 else None
-
-        except Exception as e:
-            self.log_with_timestamp(
-                f"Error in quick analysis of {pdf_path}: {str(e)}", "error", thread_name
-            )
-            return None
-
-    def analyze_pdf_page(
-        self, page: fitz.Page, page_num: int, thread_name: str = None
-    ) -> Dict:
-        """Analyze a single PDF page for detailed information"""
-        result = {
-            "page_number": page_num,
-            "images": [],
-            "max_dpi": 0,
-            "total_images": 0,
-            "page_size": f"{page.rect.width:.2f}x{page.rect.height:.2f} points",
-        }
-
-        image_list = page.get_images()
-        result["total_images"] = len(image_list)
-
-        for img_idx, img in enumerate(image_list, 1):
-            xref = img[0]
-            try:
-                image = page.parent.extract_image(xref)
-                if image:
-                    img_info = {
-                        "index": img_idx,
-                        "width": image.get("width", 0),
-                        "height": image.get("height", 0),
-                        "dpi": max(image.get("dpi", (0, 0))),
-                        "colorspace": image.get("colorspace", "Unknown"),
-                        "size_kb": len(image.get("image", b"")) / 1024,
-                    }
-                    result["images"].append(img_info)
-                    result["max_dpi"] = max(result["max_dpi"], img_info["dpi"])
-            except Exception as e:
-                self.log_with_timestamp(
-                    f"Error analyzing image {img_idx} on page {page_num}: {str(e)}",
-                    "error",
-                    thread_name,
-                )
-
-        return result
-
-    def get_pdf_dpi(self, pdf_path: str, thread_name: str = None) -> Optional[int]:
-        """Extract detailed DPI and page information from a PDF file"""
-        try:
-            self.log_with_timestamp(f"\n{'='*50}", thread_name=thread_name)
-            self.log_with_timestamp(
-                f"Starting detailed analysis of: {os.path.basename(pdf_path)}",
-                thread_name=thread_name,
-            )
-            self.log_with_timestamp(f"{'='*50}", thread_name=thread_name)
-
-            doc = fitz.open(pdf_path)
-            max_dpi = 0
-            total_images = 0
-            file_size_mb = os.path.getsize(pdf_path) / (1024 * 1024)
-
-            self.log_with_timestamp(f"Document Properties:", thread_name=thread_name)
-            self.log_with_timestamp(
-                f"- Total Pages: {len(doc)}", thread_name=thread_name
-            )
-            self.log_with_timestamp(
-                f"- File Size: {file_size_mb:.2f} MB", thread_name=thread_name
-            )
-            self.log_with_timestamp(
-                f"- PDF Version: {doc.metadata.get('format', 'Unknown')}",
-                thread_name=thread_name,
-            )
-            self.log_with_timestamp(
-                f"- Title: {doc.metadata.get('title', 'Untitled')}",
-                thread_name=thread_name,
-            )
-            self.log_with_timestamp(
-                f"\nStarting page-by-page analysis:", thread_name=thread_name
-            )
-
-            for page_num, page in enumerate(doc, 1):
-                self.log_with_timestamp(
-                    f"\nAnalyzing Page {page_num}/{len(doc)}:", thread_name=thread_name
-                )
-                page_info = self.analyze_pdf_page(page, page_num, thread_name)
-
-                # Log page details
-                self.log_with_timestamp(
-                    f"  Page Size: {page_info['page_size']}", thread_name=thread_name
-                )
-                self.log_with_timestamp(
-                    f"  Images Found: {page_info['total_images']}",
-                    thread_name=thread_name,
-                )
-
-                if page_info["images"]:
-                    self.log_with_timestamp("  Image Details:", thread_name=thread_name)
-                    for img in page_info["images"]:
-                        self.log_with_timestamp(
-                            f"    - Image {img['index']}: "
-                            f"{img['width']}x{img['height']} pixels, "
-                            f"DPI: {img['dpi']}, "
-                            f"ColorSpace: {img['colorspace']}, "
-                            f"Size: {img['size_kb']:.2f}KB",
-                            thread_name=thread_name,
-                        )
-
-                max_dpi = max(max_dpi, page_info["max_dpi"])
-                total_images += page_info["total_images"]
-
-            doc.close()
-
-            self.log_with_timestamp(f"\nAnalysis Summary:", thread_name=thread_name)
-            self.log_with_timestamp(
-                f"- Maximum DPI found: {max_dpi}", thread_name=thread_name
-            )
-            self.log_with_timestamp(
-                f"- Total images: {total_images}", thread_name=thread_name
-            )
-            self.log_with_timestamp(f"{'='*50}\n", thread_name=thread_name)
-
-            return max_dpi if max_dpi > 0 else None
-
-        except Exception as e:
-            self.log_with_timestamp(
-                f"Error analyzing PDF {pdf_path}: {str(e)}", "error", thread_name
-            )
-            return None
-
-    def compress_single_pdf(self, args):
-        """Wrapper function for compressing a single PDF (used with ThreadPoolExecutor)"""
-        input_path, output_path, quality = args
-        try:
-            return self.compress_pdf(input_path, output_path, quality)
-        except Exception as e:
-            self.log_with_timestamp(f"Error processing {input_path}: {str(e)}", "error")
-            return False
-
     def compress_pdf(self, input_path: str, output_path: str, quality: int = 50, fast_mode: bool = True, compression_type: str = "jpeg") -> bool:
-        """Compress a single PDF file while preserving DPI and OCR layers."""
+        """Compress a single PDF file using Ghostscript."""
         try:
             # Convert to absolute paths
             input_path = os.path.abspath(input_path)
@@ -285,12 +55,6 @@ class PDFProcessor:
             thread_name = f"Thread-{threading.current_thread().ident}"
             
             self.log_with_timestamp(f"Processing file: {input_path}", thread_name=thread_name)
-            
-            # Use quick analysis in fast mode, detailed analysis otherwise
-            if fast_mode:
-                original_dpi = self.get_quick_pdf_info(input_path, thread_name)
-            else:
-                original_dpi = self.get_pdf_dpi(input_path, thread_name)
             
             # Calculate compression settings
             compression_level = max(0, min(9, int((100 - quality) / 11)))
@@ -364,7 +128,6 @@ class PDFProcessor:
             ]
 
             # --- Add compression type logic ---
-            # See: https://ghostscript.com/doc/current/VectorDevices.htm#PDFWRITE
             ctype = (compression_type or "jpeg").lower()
             if ctype == "jpeg":
                 gs_call += [
@@ -387,13 +150,6 @@ class PDFProcessor:
                     '-dGrayImageFilter=/FlateEncode',
                 ]
             # else: default to JPEG
-
-            if original_dpi:
-                gs_call.extend([
-                    f'-dColorImageResolution={original_dpi}',
-                    f'-dGrayImageResolution={original_dpi}',
-                    f'-dMonoImageResolution={original_dpi}'
-                ])
 
             # Quote the file paths
             gs_call.extend([

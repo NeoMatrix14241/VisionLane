@@ -78,8 +78,6 @@ hiddenimports = [
     'tqdm',
     'colorama',
     'typing_extensions',
-    'fitz',
-    'PyMuPDF',
     # --- Add your own modules ---
     'gui.main_window',
     'gui.splash_screen',
@@ -100,8 +98,6 @@ hiddenimports += collect_submodules('ocrmypdf')
 hiddenimports += collect_submodules('doctr')
 hiddenimports += collect_submodules('pdfminer')
 hiddenimports += collect_submodules('PyQt6')
-hiddenimports += collect_submodules('fitz')
-hiddenimports += collect_submodules('PyMuPDF')
 
 # Remove any excluded modules from hiddenimports
 hiddenimports = [m for m in hiddenimports if not any(m.startswith(ex) for ex in excludes)]
@@ -143,8 +139,6 @@ datas += collect_data_files('ocrmypdf')
 datas += collect_data_files('doctr')
 datas += collect_data_files('PIL')
 datas += collect_data_files('pdfminer')
-# --- ADD PyMuPDF DATA FILES ---
-datas += collect_data_files('PyMuPDF')
 
 # OCRmyPDF resources
 try:

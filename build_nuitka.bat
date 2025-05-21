@@ -75,8 +75,6 @@ echo Building application with Nuitka...
     --include-package=tqdm ^
     --include-package=colorama ^
     --include-package=typing_extensions ^
-    --include-package=fitz ^
-    --include-package=pymupdf ^
     --include-package=gui ^
     --include-package=utils ^
     --include-package-data=doctr ^
@@ -85,7 +83,6 @@ echo Building application with Nuitka...
     --include-package-data=torchvision ^
     --include-package-data=PIL ^
     --include-package-data=pdfminer ^
-    --include-package-data=pymupdf ^
     --include-package-data=ocrmypdf ^
     --include-data-dir=.venv\Lib\site-packages\torch\lib=torch\lib ^
     --output-dir=dist ^
