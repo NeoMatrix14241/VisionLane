@@ -108,6 +108,44 @@ pip install -r requirements.txt
 python test_cuda.py
 ```
 
+## Build
+
+You can build VisionLane OCR as a standalone executable using either Nuitka (recommended for fast startup) or PyInstaller.
+
+### Build with Nuitka (Recommended)
+
+1. Make sure all dependencies are installed:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2. Run the build script:
+    ```bat
+    build_nuitka.bat
+    ```
+
+   - The output will be in the `dist` directory.
+   - By default, this uses "onedir" mode (a folder with all dependencies).
+
+### Build with PyInstaller (Alternative)
+
+1. Make sure all dependencies are installed:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2. Run the PyInstaller build script:
+    ```bat
+    build_pyinstaller.bat
+    ```
+
+   - The output will be in the `dist` directory.
+   - This uses the `build.spec` file for configuration.
+
+**Note:**  
+- Ensure you have the correct Python version (3.10–3.12) and a compatible NVIDIA GPU for best performance.
+- The build scripts will automatically verify and download required DocTR models before building.
+
 ## Usage
 
 1. Start the application:
