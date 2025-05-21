@@ -65,7 +65,7 @@ The following features and improvements are planned for future releases:
   _→ GPU acceleration can be disabled and use CPU instead_
 - [ ] Add a function to check if the recommended 8GB VRAM is met, else suggest to switch to CPU  
   _→ Below 6GB are crashing often based on my tests_
-- [ ] Add super-image enhancement to standardize image sizes  
+- [ ] Integrate super-image (PyTorch) Library for image enhancement to standardize image sizes  
   _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
 
 ### 📁 File Handling Enhancements
