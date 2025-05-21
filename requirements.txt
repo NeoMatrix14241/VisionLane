@@ -46,7 +46,6 @@ python-doctr==0.11.0
 ocrmypdf==16.10.1
 PyPDF2==3.0.1
 Pillow==11.2.1
-opencv-python==4.11.0.86
 numpy==2.2.5
 psutil==7.0.0
 nvidia-ml-py3==7.352.0
@@ -54,8 +53,6 @@ GPUtil==1.4.0
 python-magic-bin==0.4.14
 python-magic==0.4.27
 pdf2image==1.17.0
-img2pdf==0.6.1
-pdfminer.six==20250506
 tqdm==4.67.1
 colorama==0.4.6
 typing_extensions==4.13.2

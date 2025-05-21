@@ -40,7 +40,6 @@ hiddenimports = [
     'PIL._imagingtk',
     'PIL._tkinter_finder',
     'numpy',
-    'cv2',
     'psutil',
     'pynvml',
     'GPUtil',
@@ -50,14 +49,6 @@ hiddenimports = [
     'ocrmypdf.api',
     'ocrmypdf.helpers',
     'pdf2image',
-    'img2pdf',
-    'pdfminer',
-    'pdfminer.six',
-    'pdfminer.high_level',
-    'pdfminer.layout',
-    'pdfminer.converter',
-    'pdfminer.pdfinterp',
-    'pdfminer.pdfpage',
     'PyQt6',
     'PyQt6.QtWidgets',
     'PyQt6.QtGui',
@@ -96,7 +87,6 @@ hiddenimports = [
 # Add package submodules PyInstaller may miss 
 hiddenimports += collect_submodules('ocrmypdf')
 hiddenimports += collect_submodules('doctr')
-hiddenimports += collect_submodules('pdfminer')
 hiddenimports += collect_submodules('PyQt6')
 
 # Remove any excluded modules from hiddenimports
@@ -138,7 +128,6 @@ except ImportError:
 datas += collect_data_files('ocrmypdf')
 datas += collect_data_files('doctr')
 datas += collect_data_files('PIL')
-datas += collect_data_files('pdfminer')
 
 # OCRmyPDF resources
 try:

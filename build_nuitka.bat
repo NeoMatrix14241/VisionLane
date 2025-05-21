@@ -24,10 +24,8 @@ REM Build with Nuitka
 echo Building application with Nuitka...
 .\.venv\Scripts\python.exe -m nuitka ^
     --standalone ^
-    --enable-plugin=tk-inter ^
     --enable-plugin=pyqt6 ^
     --enable-plugin=multiprocessing ^
-    --enable-plugin=pylint-warnings ^
     --include-qt-plugins=all ^
     --include-data-file=icon.ico=icon.ico ^
     --include-data-file=config.ini=config.ini ^
@@ -46,7 +44,6 @@ echo Building application with Nuitka...
     --include-package=torchvision.transforms ^
     --include-package=PIL ^
     --include-package=numpy ^
-    --include-package=cv2 ^
     --include-package=psutil ^
     --include-package=pynvml ^
     --include-package=GPUtil ^
@@ -56,14 +53,6 @@ echo Building application with Nuitka...
     --include-package=ocrmypdf.api ^
     --include-package=ocrmypdf.helpers ^
     --include-package=pdf2image ^
-    --include-package=img2pdf ^
-    --include-package=pdfminer ^
-    --include-package=pdfminer.six ^
-    --include-package=pdfminer.high_level ^
-    --include-package=pdfminer.layout ^
-    --include-package=pdfminer.converter ^
-    --include-package=pdfminer.pdfinterp ^
-    --include-package=pdfminer.pdfpage ^
     --include-package=PyQt6 ^
     --include-package=PyQt6.QtWidgets ^
     --include-package=PyQt6.QtGui ^
@@ -82,7 +71,6 @@ echo Building application with Nuitka...
     --include-package-data=torch.cuda ^
     --include-package-data=torchvision ^
     --include-package-data=PIL ^
-    --include-package-data=pdfminer ^
     --include-package-data=ocrmypdf ^
     --include-data-dir=.venv\Lib\site-packages\torch\lib=torch\lib ^
     --output-dir=dist ^
