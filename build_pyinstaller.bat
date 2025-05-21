@@ -1,6 +1,6 @@
 @echo off
 
-title App Builder: VisionLane OCR Application
+title App Builder: VisionLane OCR Application (PyInstaller)
 REM --------------------------------------------------------
 REM VisionLane Build Script
 REM --------------------------------------------------------
