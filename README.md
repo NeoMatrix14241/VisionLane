@@ -67,8 +67,8 @@ The following features and improvements are planned for future releases:
   _→ Below 6GB are crashing often based on my tests_
 - [ ] Integrate super-image (PyTorch) Library for image enhancement to standardize image sizes  
   _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
-- [ ] Fix OCRmyPDF related bugs causing no output to HOCR and incorrect folder structure output when processing PDF files
-  _→ OCRmyPDF causes "Division By Zero Error" and PDF files have incorrect folder structure_
+- [ ] Fix OCRmyPDF related bugs causing no output when HOCR output is selected
+  _→ OCRmyPDF causes "Division By Zero Error" resulting without any output at all_
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
@@ -77,6 +77,8 @@ The following features and improvements are planned for future releases:
   _→ Preserve searchable text while applying JPEG-based compression_
 - [x] Fix where it suddenly creates output folder in the repository when running  
   _→ It remains there ever since I started making it as CLI based OCR processor_
+- [ ] Fix PDF output's folder structure when processing PDF files
+  _→ PDF files have incorrect output and folder structure after processing_
 
 ### 🎨 UI/UX Features
 - [x] Add dark mode toggle and various bug fixes  
