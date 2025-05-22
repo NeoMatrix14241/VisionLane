@@ -916,7 +916,7 @@ class OCRProcessor:
             output_folder.mkdir(parents=True, exist_ok=True)
 
             # Use the parent folder name as the PDF name
-            pdf_name = relative_path.name + ".pdf"  # This is the folder name containing the images
+            pdf_name = relative_path.name + ".pdf"  # This is the folder containing the images
             output_pdf = output_folder / pdf_name
 
             # Create HOCR directory with same structure if needed
@@ -968,79 +968,206 @@ class OCRProcessor:
             logger.error(f"Error merging PDFs: {e}")
             raise
 
+    # Add this dummy method to avoid AttributeError when processing PDFs
+    def _track_process(self):
+        """Dummy process tracker for compatibility (does nothing)."""
+        return None
+
+    def _convert_pdf_to_images(self, pdf_path: Path, output_dir: Path, dpi=300) -> List[Path]:
+        """Convert PDF to images using Ghostscript"""
+        try:
+            # Ensure output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Find Ghostscript executable
+            if sys.platform.startswith("win"):
+                exe_name = "gswin64c.exe"
+                gs_path = None
+                # 1. Check PATH
+                gs_path = shutil.which(exe_name)
+                if not gs_path:
+                    # 2. Search in Program Files
+                    import re
+                    from pathlib import Path
+                    search_dirs = [
+                        Path("C:/Program Files/gs"),
+                        Path("C:/Program Files (x86)/gs"),
+                    ]
+                    found = []
+                    for base in search_dirs:
+                        if base.exists():
+                            for sub in base.iterdir():
+                                if sub.is_dir():
+                                    exe = sub / "bin" / exe_name
+                                    if exe.exists():
+                                        m = re.search(r'(\d+(\.\d+)*)', sub.name)
+                                        version = tuple(map(int, m.group(1).split('.'))) if m else (0,)
+                                        found.append((version, exe))
+                    if found:
+                        found.sort(reverse=True)
+                        gs_path = str(found[0][1])
+            else:
+                exe_name = "gs"
+                gs_path = shutil.which(exe_name)
+                
+            if not gs_path:
+                raise RuntimeError("Ghostscript not found")
+
+            # Prepare Ghostscript command for PDF to image conversion
+            output_pattern = str(output_dir / "page_%d.tif")
+            gs_cmd = [
+                f'"{gs_path}"',
+                "-dQUIET",
+                "-dNOPAUSE",
+                "-dBATCH",
+                "-dSAFER",
+                "-sDEVICE=tiffg4",  # Use TIFF G4 compression for B&W
+                f"-r{dpi}",  # Set resolution
+                "-dTextAlphaBits=4",
+                "-dGraphicsAlphaBits=4",
+                "-dFirstPage=1",
+                f'-sOutputFile="{output_pattern}"',
+                f'"{pdf_path}"'
+            ]
+
+            # Execute Ghostscript
+            run_kwargs = dict(
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                shell=True
+            )
+            if sys.platform.startswith("win"):
+                run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            
+            process = subprocess.run(' '.join(gs_cmd), **run_kwargs)
+            
+            if process.returncode != 0:
+                raise RuntimeError(f"Ghostscript error: {process.stderr}")
+
+            # Get generated images sorted by page number
+            images = sorted(
+                [p for p in output_dir.glob("page_*.tif")],
+                key=lambda x: int(x.stem.split('_')[1])
+            )
+            
+            if not images:
+                raise RuntimeError("No images generated from PDF")
+                
+            return images
+
+        except Exception as e:
+            logger.error(f"PDF to image conversion failed: {e}")
+            raise
+
     def process_pdf(self, pdf_path: Union[str, Path]) -> None:
-        pid = self._track_process()  # Track PID for this process
+        """Process PDF by converting to images first using Ghostscript"""
+        page_pdfs = []
+        page_images_dir = None
+        
         try:
             if self.is_cancelled or self._force_stop:
                 return
-                
+
             pdf_path = Path(pdf_path)
-            self.current_file = str(pdf_path)  # Set current file
+            self.current_file = str(pdf_path)
             logger.info(f"Processing PDF: {pdf_path}")
             
-            # Track file before processing
+            # Track file
             self._processed_files.add(str(pdf_path))
             logger.debug(f"Added to processed files: {pdf_path.name}")
+
+            # Convert PDF to images
+            logger.info("Converting PDF to images...")
+            page_images_dir = self.temp_dir / "pdf_pages"
+            page_images_dir.mkdir(exist_ok=True)
             
-            # Load and process PDF
-            doc = DocumentFile.from_pdf(str(pdf_path))
-            total_pages = len(doc)
-            logger.info(f"PDF contains {total_pages} pages")
+            # Convert PDF pages to images
+            pages = self._convert_pdf_to_images(
+                pdf_path,
+                page_images_dir,
+                dpi=300
+            )
             
-            # Report initial progress
+            # --- FIX: Prevent division by zero if no pages ---
+            if not pages or len(pages) == 0:
+                logger.error("No pages extracted from PDF")
+                raise RuntimeError("No pages extracted from PDF")
+                
+            logger.info(f"Extracted {len(pages)} pages as images")
+            total_pages = len(pages)
+
+            # Signal progress for PDF start - treat as 1 file
             if self.progress_callback:
-                self.progress_callback(0, 100)
-            
-            result = self.model(doc)
-            if self.progress_callback:
-                self.progress_callback(30, 100)
-            
-            # Generate output filenames
-            base_name = pdf_path.stem
-            hocr_output = self.hocr_dir / f"{base_name}_hocr.xml"
-            pdf_output = self.pdf_dir / f"{base_name}_ocr.pdf"
-            
-            # Export HOCR XML with page tracking
-            xml_outputs = result.export_as_xml()
-            if self.progress_callback:
-                self.progress_callback(60, 100)
-            
-            def process_page(page_num, page_xml):
-                try:
-                    if self.is_cancelled:
-                        return False
+                self.progress_callback(1, 1, 0)  # One file, just started
+
+            # Process each page without individual progress updates
+            for idx, page_img in enumerate(pages, 1):
+                if self.is_cancelled or self._force_stop:
+                    return
                     
-                    mode = "w" if page_num == 1 else "a"
-                    with open(hocr_output, mode, encoding="utf-8") as f:
-                        f.write(page_xml.decode())
-                    logger.info(f"Processed page {page_num}/{total_pages}")
-                    # Update progress for individual pages
-                    if self.progress_callback:
-                        progress = 60 + int((page_num / total_pages) * 40)  # Scale from 60-100
-                        self.progress_callback(progress, 100)
-                    return True
+                logger.info(f"Processing page {idx}/{total_pages}")
+                
+                # Create page PDF with consistent naming
+                temp_pdf_path = self.temp_dir / f"page_{idx:04d}.pdf"
+                
+                try:
+                    # Process single page
+                    self._process_single_image(Path(page_img), temp_pdf_path)
+                    if temp_pdf_path.exists() and temp_pdf_path.stat().st_size > 0:
+                        page_pdfs.append(temp_pdf_path)
+                        
                 except Exception as e:
-                    logger.error(f"Error processing page {page_num}: {e}")
-                    return False
-        
-            # Process pages in thread pool
-            futures = []
-            for page_num, page_xml in enumerate(xml_outputs[0], 1):
-                future = self.thread_pool.submit(process_page, page_num, page_xml)
-                futures.append(future)
-            
-            # Wait for completion
-            completed_pages = sum(1 for future in as_completed(futures) if future.result())
-            logger.info(f"Successfully processed {completed_pages}/{total_pages} pages")
-            
+                    logger.error(f"Error processing page {idx}: {e}")
+                    continue
+
+            # Merge pages
+            if page_pdfs:
+                output_folder = self.pdf_dir
+                output_folder.mkdir(parents=True, exist_ok=True)
+                
+                output_pdf = output_folder / f"{pdf_path.stem}_ocr.pdf"
+                
+                # Merge using same method as folder processing
+                merger = PdfMerger()
+                merged_count = 0
+                
+                for pdf in page_pdfs:
+                    try:
+                        merger.append(str(pdf))
+                        merged_count += 1
+                    except Exception as e:
+                        logger.error(f"Error adding PDF {pdf}: {e}")
+                
+                if merged_count > 0:
+                    merger.write(str(output_pdf))
+                    merger.close()
+                    logger.info(f"Created merged PDF with {merged_count} pages: {output_pdf}")
+                else:
+                    raise RuntimeError("No pages were successfully processed and merged")
+                
+            # Signal completion - PDF counts as one completed file
             if self.progress_callback:
-                self.progress_callback(100, 100)
-            
+                self.progress_callback(1, 1, 100)  # One file, completed
+                
         except Exception as e:
-            # Remove from processed if failed
             self._processed_files.discard(str(pdf_path))
             logger.error(f"Error processing PDF {pdf_path}: {e}")
             raise
+            
+        finally:
+            # Clean up temp files safely
+            try:
+                if page_images_dir and page_images_dir.exists():
+                    shutil.rmtree(str(page_images_dir))
+                for pdf in page_pdfs:
+                    try:
+                        if pdf.exists():
+                            pdf.unlink()
+                    except Exception as e:
+                        logger.warning(f"Could not delete temp PDF {pdf}: {e}")
+            except Exception as e:
+                logger.warning(f"Error during cleanup: {e}")
 
     def __del__(self):
         """Ensure cleanup on deletion"""

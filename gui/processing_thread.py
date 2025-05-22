@@ -80,15 +80,15 @@ class OCRWorker(QRunnable):
         self.last_progress_emit = time.time()
         self.progress_delay = 1.0  # 1 second delay
         
-        def progress_callback(current, total):
-            """Progress callback with guaranteed updates"""
+        def progress_callback(current_file, total_files, file_progress=None):
+            """Progress callback that handles both file and page progress"""
             if self._force_stop or self.ocr.is_cancelled:
                 return False
                 
             current_time = time.time()
             
             # Always update on file completion or enough time has passed
-            if total == 100 or (current_time - self.last_progress_emit >= self.progress_delay):
+            if total_files == 100 or (current_time - self.last_progress_emit >= self.progress_delay):
                 # Get actual processed files from OCR
                 if hasattr(self.ocr, '_processed_files'):
                     processed = len(self.ocr._processed_files)
@@ -100,7 +100,7 @@ class OCRWorker(QRunnable):
                         self.signals.progress.emit(
                             processed,  # Current count
                             self._total_files,  # Total files
-                            int((processed / self._total_files) * 100)  # Overall progress
+                            file_progress or int((processed / self._total_files) * 100)  # Overall progress
                         )
                         self.last_progress_emit = current_time
                         self.logger.debug(f"Progress update: {processed}/{self._total_files}")

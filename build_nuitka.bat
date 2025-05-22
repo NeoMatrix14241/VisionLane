@@ -5,6 +5,10 @@ REM --------------------------------------------------------
 REM VisionLane Build Script (Nuitka version)
 REM --------------------------------------------------------
 
+REM IMPORTANT: DO NOT REMOVE ANY --include-package=... LINES BELOW!
+REM These are required for Nuitka to bundle PyQt6, torch, doctr, and all dependencies.
+REM If you remove them, your app will not run after building.
+
 REM Clean old build artifacts
 echo Cleaning up old build...
 rmdir /s /q "%~dp0build" 2>nul
@@ -25,6 +29,7 @@ echo Building application with Nuitka...
 .\.venv\Scripts\python.exe -m nuitka ^
     --standalone ^
     --nofollow-import-to=onnx ^
+    --nofollow-imports ^
     --enable-plugin=pyqt6 ^
     --enable-plugin=multiprocessing ^
     --include-qt-plugins=platforms,imageformats ^
@@ -47,16 +52,11 @@ echo Building application with Nuitka...
     --include-package=ocrmypdf.api ^
     --include-package=pdf2image ^
     --include-package=PyQt6 ^
-    --include-package=PyQt6.QtWidgets ^
-    --include-package=PyQt6.QtGui ^
-    --include-package=PyQt6.QtCore ^
-    --include-package=magic ^
-    --include-package=magic.loader ^
-    --include-package=tqdm ^
-    --include-package=colorama ^
-    --include-package=typing_extensions ^
-    --include-package=gui ^
-    --include-package=utils ^
+    --include-package=gui.processing_thread ^
+    --include-package=gui.log_handler ^
+    --include-package=utils.image_processor ^
+    --include-package=utils.pypdfcompressor ^
+    --include-package=utils.debug_helper ^
     --include-package-data=doctr ^
     --include-package-data=torch ^
     --include-package-data=torchvision ^
