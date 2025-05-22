@@ -67,6 +67,8 @@ The following features and improvements are planned for future releases:
   _→ Below 6GB are crashing often based on my tests_
 - [ ] Integrate super-image (PyTorch) Library for image enhancement to standardize image sizes  
   _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
+- [ ] Fix OCRmyPDF related bugs causing no output to HOCR and incorrect folder structure output when processing PDF files
+  _→ OCRmyPDF causes "Division By Zero Error" and PDF files have incorrect folder structure_
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
