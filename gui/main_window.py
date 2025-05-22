@@ -481,19 +481,18 @@ class MainWindow(QMainWindow):
             
             # Get logger
             logger = logging.getLogger()
-            
-            # Remove all existing handlers (not just file handlers)
+
+            # --- FIX: Remove all existing handlers before adding new file handler ---
             for handler in logger.handlers[:]:
                 handler.close()
                 logger.removeHandler(handler)
-            
+
             # Add new handler
             logger.addHandler(file_handler)
             logger.setLevel(logging.DEBUG)
-            
             logger.info("=== New OCR Processing Session Started ===")
             logger.info(f"Log file: {self.log_file}")
-            
+
         except Exception as e:
             logger.error(f"Failed to setup logging: {e}", exc_info=True)
             print(f"Failed to setup logging: {e}")

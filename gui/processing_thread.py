@@ -67,6 +67,11 @@ class OCRWorker(QRunnable):
         # Setup custom logging that doesn't depend on signals
         self.log_handler = LogHandler(self.signals)
         self.logger = logging.getLogger('ocr_processor')
+
+        # --- FIX: Remove previous LogHandler instances before adding new one ---
+        for handler in list(self.logger.handlers):
+            if isinstance(handler, LogHandler):
+                self.logger.removeHandler(handler)
         self.logger.addHandler(self.log_handler)
         
         self.process_manager = ProcessManager()
