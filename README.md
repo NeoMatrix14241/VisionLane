@@ -1,6 +1,6 @@
 # VisionLane OCR
 
-[EXPERIMENTAL RELEASE AND WILL BE UPDATED IN THE FUTURE]
+[EXPERIMENTAL RELEASE AND WILL BE UPDATED IN THE FUTURE, KNOWN BUGS ARE INCLUDED IN ROADMAP]
 
 ![icon_landscape_transparent_bg2](https://github.com/user-attachments/assets/c05d5fa0-7f75-4382-b300-8884ccbe196b)
 
