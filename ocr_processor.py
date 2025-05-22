@@ -1073,6 +1073,10 @@ class OCRProcessor:
             self.current_file = str(pdf_path)
             logger.info(f"Processing PDF: {pdf_path}")
             
+            # Initialize progress values
+            processed_pages = 0
+            total_pages = 0
+            
             # Track file
             self._processed_files.add(str(pdf_path))
             logger.debug(f"Added to processed files: {pdf_path.name}")
@@ -1089,9 +1093,7 @@ class OCRProcessor:
                 dpi=300
             )
             
-            # --- FIX: Prevent division by zero if no pages ---
-            if not pages or len(pages) == 0:
-                logger.error("No pages extracted from PDF")
+            if not pages:
                 raise RuntimeError("No pages extracted from PDF")
                 
             logger.info(f"Extracted {len(pages)} pages as images")
