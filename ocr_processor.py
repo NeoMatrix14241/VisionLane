@@ -464,16 +464,22 @@ class OCRProcessor:
             # Track file before processing
             self._processed_files.add(str(image_path))
             logger.debug(f"Added to processed files: {image_path.name}")
-            # Calculate relative path from absolute input path
+
+            # --- FIX: Calculate relative path from input_path (session root) ---
             try:
                 relative_path = image_path.parent.relative_to(self.input_path)
             except ValueError:
-                # If path is not relative to input_path, use full path
                 relative_path = image_path.parent
-            
-            # Create folder key from absolute path to avoid collisions
-            folder_key = str(image_path.parent).replace(':', '').replace('\\', '-').replace('/', '-')
-            
+
+            # --- FIX: Folder key must be unique per subfolder (relative to input_path) ---
+            folder_key = str(relative_path).replace(':', '').replace('\\', '-').replace('/', '-')
+            if not folder_key or folder_key == '.':
+                folder_key = "root"
+
+            # --- FIX: Always create temp_dir if missing (can be deleted after previous merge) ---
+            if not self.temp_dir.exists():
+                self.temp_dir.mkdir(parents=True, exist_ok=True)
+
             # Get all images in current folder and sort them
             all_images = sorted([
                 p for p in image_path.parent.glob("*.tif")
@@ -484,11 +490,12 @@ class OCRProcessor:
             logger.info(f"Processing image {current_index + 1}/{total_images}: {image_path.name}")
             logger.debug(f"Folder key: {folder_key}")
             logger.debug(f"Full path: {image_path}")
+
             # Create temp PDF with index to maintain order
             temp_pdf_path = self.temp_dir / f"{folder_key}-{current_index:04d}.pdf"
             self._process_single_image(image_path, temp_pdf_path, dpi=self.dpi)
-            
-            # Only merge when processing the last image
+
+            # Only merge when processing the last image in this subfolder
             if current_index == len(all_images) - 1:
                 self._merge_folder_pdfs(folder_key, relative_path)
             return {
@@ -871,44 +878,54 @@ class OCRProcessor:
             max_wait = 30  # seconds
             start_time = time.time()
             temp_pattern = f"{folder_key}-*.pdf"
-            expected_count = len(list(self.input_path.rglob("*.tif")))
-            
+
+            # --- FIX: Only count images in the current subfolder, not all input_path ---
+            folder_abs = self.input_path / relative_path if not relative_path.is_absolute() else relative_path
+            expected_count = len(list(folder_abs.glob("*.tif")))
+            if expected_count == 0:
+                logger.warning(f"No images found in folder: {folder_abs}")
+                return
+
+            # --- FIX: Always create temp_dir if missing (can be deleted after previous merge) ---
+            if not self.temp_dir.exists():
+                self.temp_dir.mkdir(parents=True, exist_ok=True)
+
             while True:
                 temp_pdfs = sorted(
                     list(self.temp_dir.glob(temp_pattern)),
                     key=lambda x: int(x.stem.split('-')[-1])
                 )
-                
+
                 if len(temp_pdfs) >= expected_count:
                     break
-                    
+
                 if time.time() - start_time > max_wait:
                     logger.error(f"Timeout waiting for PDFs. Found {len(temp_pdfs)}/{expected_count}")
                     break
                 time.sleep(1)
                 logger.debug(f"Waiting for PDFs... {len(temp_pdfs)}/{expected_count}")
-            
+
             # Verify all files exist and are valid
             temp_pdfs = [pdf for pdf in temp_pdfs if pdf.exists() and pdf.stat().st_size > 0]
-            
+
             if len(temp_pdfs) != expected_count:
                 logger.error(f"Missing PDFs: found {len(temp_pdfs)}/{expected_count}")
 
             # Create output directories preserving folder structure
             output_folder = self.pdf_dir / relative_path.parent
             output_folder.mkdir(parents=True, exist_ok=True)
-            
+
             # Use the parent folder name as the PDF name
             pdf_name = relative_path.name + ".pdf"  # This is the folder name containing the images
             output_pdf = output_folder / pdf_name
-            
+
             # Create HOCR directory with same structure if needed
             if "hocr" in self.output_formats:
                 hocr_folder = self.hocr_dir / relative_path
                 hocr_folder.parent.mkdir(parents=True, exist_ok=True)
-            
+
             logger.info(f"Output PDF path: {output_pdf}")
-            
+
             # Merge PDFs
             merger = PdfMerger()
             merged_count = 0
