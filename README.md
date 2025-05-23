@@ -73,6 +73,8 @@ The following features and improvements are planned for future releases:
   _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
 - [ ] Fix OCRmyPDF related bugs causing no output when HOCR output is selected
   _→ OCRmyPDF causes "Division By Zero Error" resulting without any output at all_
+- [ ] Fix RGBA issues on some image
+  _→ RGB is the only channel supported by HOCR transform of OCRmyPDF_
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
@@ -83,6 +85,8 @@ The following features and improvements are planned for future releases:
   _→ It remains there ever since I started making it as CLI based OCR processor_
 - [ ] Fix PDF output's folder structure when processing PDF files
   _→ PDF files have incorrect output and folder structure after processing_
+- [ ] Fix unsupported images, apparently only the TIFF files are getting processed
+  _→ Will add various images supported in the future_
 
 ### 🎨 UI/UX Features
 - [x] Add dark mode toggle and various bug fixes  
