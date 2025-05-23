@@ -39,8 +39,6 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 
 ## Requirements
 
-## Requirements
-
 - **Python 3.10 or higher**  
   _(Tested from 3.10 to 3.12.6)_
 - ⚠️ **CRITICAL: NVIDIA GPU with 8GB+ VRAM**  
