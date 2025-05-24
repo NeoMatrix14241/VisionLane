@@ -900,7 +900,7 @@ class OCRProcessor:
                     break
 
                 if time.time() - start_time > max_wait:
-                    logger.error(f"Timeout waiting for PDFs. Found {len(temp_pdfs)}/{expected_count}")
+                    logger.warning(f"Timed out waiting for PDFs ({len(temp_pdfs)}/{expected_count})")
                     break
                 time.sleep(1)
                 logger.debug(f"Waiting for PDFs... {len(temp_pdfs)}/{expected_count}")
@@ -915,8 +915,21 @@ class OCRProcessor:
             output_folder = self.pdf_dir / relative_path.parent
             output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Use the parent folder name as the PDF name
-            pdf_name = relative_path.name + ".pdf"  # This is the folder containing the images
+            # --- FIX: Handle PDF naming properly ---
+            # If relative_path is a directory, use its name
+            # If it's a file pattern or empty, use the parent folder name
+            if folder_abs.is_dir():
+                pdf_name = folder_abs.name + ".pdf"
+            else:
+                # For cases where the path might represent a pattern or be empty
+                # Use the parent folder name
+                pdf_name = relative_path.name + ".pdf"
+                
+            # If the path is empty or just a dot, use the input_path's name
+            if pdf_name == ".pdf" or not pdf_name or pdf_name == "*.pdf":
+                pdf_name = self.input_path.name + ".pdf"
+                
+            logger.debug(f"Using PDF name: {pdf_name} for folder: {relative_path}")
             output_pdf = output_folder / pdf_name
 
             # Create HOCR directory with same structure if needed
@@ -944,23 +957,13 @@ class OCRProcessor:
                 
                 # Clean up temp PDFs and folder after successful merge
                 if output_pdf.exists() and output_pdf.stat().st_size > 0:
-                    # Delete temp PDFs
                     for pdf in temp_pdfs:
                         try:
                             pdf.unlink()
                         except Exception as e:
-                            logger.warning(f"Failed to delete temp PDF {pdf}: {e}")
-                    
-                    # Remove temp directory if it's empty
-                    try:
-                        remaining_files = list(self.temp_dir.glob('*'))
-                        if not remaining_files:
-                            shutil.rmtree(str(self.temp_dir), ignore_errors=True)
-                            logger.info("Removed empty temp directory")
-                    except Exception as e:
-                        logger.warning(f"Could not remove temp directory: {e}")
+                            logger.warning(f"Could not delete temp PDF {pdf}: {e}")
                 else:
-                    logger.error("Output PDF not created properly")
+                    logger.error(f"Failed to create merged PDF at {output_pdf}")
             else:
                 logger.error("No PDFs merged")
 
