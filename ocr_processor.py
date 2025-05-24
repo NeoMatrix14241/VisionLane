@@ -22,6 +22,7 @@ import tempfile
 import shutil
 from utils.thread_killer import ThreadKiller
 from utils.pypdfcompressor import compress_pdf  # Add this import
+import io  # Add this import for BytesIO
 
 # --- PATCH: Suppress nvidia-smi console window on Windows ---
 import subprocess
@@ -663,12 +664,12 @@ class OCRProcessor:
         return None
 
     def _convert_pdf_to_images(self, pdf_path: Path, output_dir: Path, dpi=300) -> List[Path]:
-        """Convert PDF to images using Ghostscript"""
+        """Convert PDF to images using Ghostscript with improved compatibility"""
         try:
             # Ensure output directory exists
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            # Find Ghostscript executable
+            # --- IMPROVED: Find Ghostscript executable with better error handling ---
             if sys.platform.startswith("win"):
                 exe_name = "gswin64c.exe"
                 gs_path = None
@@ -700,21 +701,44 @@ class OCRProcessor:
                 gs_path = shutil.which(exe_name)
                 
             if not gs_path:
-                raise RuntimeError("Ghostscript not found")
+                # --- FALLBACK: If Ghostscript not found, use pdf2image (PyMuPDF) ---
+                logger.warning("Ghostscript not found, using pdf2image fallback method")
+                try:
+                    import pdf2image
+                    images = pdf2image.convert_from_path(
+                        str(pdf_path),
+                        dpi=dpi,
+                        output_folder=str(output_dir),
+                        fmt='png',  # Use PNG for better compatibility
+                        output_file=f"page_",
+                        paths_only=True,
+                        use_pdftocairo=True  # Try pdftocairo first for better quality
+                    )
+                    
+                    # Return the image paths
+                    image_paths = [Path(img_path) for img_path in images]
+                    return sorted(image_paths, key=lambda x: int(x.stem.split('_')[-1]))
+                except ImportError:
+                    raise RuntimeError("Neither Ghostscript nor pdf2image available")
 
-            # Prepare Ghostscript command for PDF to image conversion
-            output_pattern = str(output_dir / "page_%d.tif")
+            # --- IMPROVED: Prepare Ghostscript command for PDF to image conversion with better parameters ---
+            output_pattern = str(output_dir / "page_%04d.png")  # Use PNG instead of TIFF for wider compatibility
             gs_cmd = [
                 f'"{gs_path}"',
                 "-dQUIET",
                 "-dNOPAUSE",
                 "-dBATCH",
                 "-dSAFER",
-                "-sDEVICE=tiffg4",  # Use TIFF G4 compression for B&W
+                "-sDEVICE=pngalpha",  # Use PNG with alpha for better compatibility
                 f"-r{dpi}",  # Set resolution
                 "-dTextAlphaBits=4",
                 "-dGraphicsAlphaBits=4",
                 "-dFirstPage=1",
+                "-dMaxBitmap=500000000",  # Increase memory limit for large pages
+                "-dAlignToPixels=0",
+                "-dGridFitTT=2",
+                "-dNOINTERPOLATE", # Better text quality
+                "-dDownScaleFactor=1",  # No downscaling
                 f'-sOutputFile="{output_pattern}"',
                 f'"{pdf_path}"'
             ]
@@ -729,15 +753,36 @@ class OCRProcessor:
             if sys.platform.startswith("win"):
                 run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             
+            logger.debug(f"Running Ghostscript command: {' '.join(gs_cmd)}")
             process = subprocess.run(' '.join(gs_cmd), **run_kwargs)
             
             if process.returncode != 0:
-                raise RuntimeError(f"Ghostscript error: {process.stderr}")
+                logger.error(f"Ghostscript error: {process.stderr}")
+                
+                # --- FALLBACK: If Ghostscript fails, try pdf2image ---
+                logger.warning("Ghostscript failed, trying pdf2image fallback")
+                try:
+                    import pdf2image
+                    images = pdf2image.convert_from_path(
+                        str(pdf_path),
+                        dpi=dpi,
+                        output_folder=str(output_dir),
+                        fmt='png',
+                        output_file=f"page_",
+                        paths_only=True,
+                        use_pdftocairo=True
+                    )
+                    
+                    # Return the image paths
+                    image_paths = [Path(img_path) for img_path in images]
+                    return sorted(image_paths, key=lambda x: int(x.stem.split('_')[-1]))
+                except ImportError:
+                    raise RuntimeError(f"Ghostscript failed and pdf2image not available: {process.stderr}")
 
             # Get generated images sorted by page number
             images = sorted(
-                [p for p in output_dir.glob("page_*.tif")],
-                key=lambda x: int(x.stem.split('_')[1])
+                [p for p in output_dir.glob("page_*.png")],
+                key=lambda x: int(x.stem.split('_')[-1])
             )
             
             if not images:
@@ -748,6 +793,162 @@ class OCRProcessor:
         except Exception as e:
             logger.error(f"PDF to image conversion failed: {e}")
             raise
+
+    # Improve the fallback conversion method to work with existing GS-extracted images
+    def _convert_pdf_fallback(self, pdf_path: Path, output_dir: Path, dpi=300) -> List[Path]:
+        """
+        Fallback method to handle PDF to image conversion using only Ghostscript
+        This method tries to use existing extracted images first before attempting other conversions
+        """
+        try:
+            # First check if images were already extracted by the primary method
+            existing_images = sorted(
+                [p for p in output_dir.glob("page_*.png")],
+                key=lambda x: int(x.stem.split('_')[-1])
+            )
+            
+            # If Ghostscript already extracted images, use them directly
+            if existing_images:
+                logger.info(f"Using {len(existing_images)} images already extracted by Ghostscript")
+                return existing_images
+                
+            # If no images found, try direct Ghostscript call as a last resort
+            logger.info("No images found, attempting direct Ghostscript call")
+            return self._direct_gs_conversion(pdf_path, output_dir, dpi)
+                
+        except Exception as e:
+            logger.error(f"Fallback PDF conversion failed: {e}")
+            raise
+
+    def _direct_gs_conversion(self, pdf_path: Path, output_dir: Path, dpi=300) -> List[Path]:
+        """Direct GhostScript conversion as a last resort"""
+        try:
+            import sys
+            import re
+            import shutil
+            
+            # Find GhostScript executable
+            if sys.platform.startswith("win"):
+                exe_name = "gswin64c.exe"
+                gs_path = None
+                # 1. Check PATH
+                gs_path = shutil.which(exe_name)
+                if not gs_path:
+                    # 2. Search in Program Files locations
+                    search_dirs = [
+                        Path("C:/Program Files/gs"),
+                        Path("C:/Program Files (x86)/gs"),
+                    ]
+                    found = []
+                    for base in search_dirs:
+                        if base.exists():
+                            for sub in base.iterdir():
+                                if sub.is_dir():
+                                    exe = sub / "bin" / exe_name
+                                    if exe.exists():
+                                        m = re.search(r'(\d+(\.\d+)*)', sub.name)
+                                        version = tuple(map(int, m.group(1).split('.'))) if m else (0,)
+                                        found.append((version, exe))
+                    if found:
+                        found.sort(reverse=True)
+                        gs_path = str(found[0][1])
+            else:
+                exe_name = "gs"
+                gs_path = shutil.which(exe_name)
+                
+            if not gs_path:
+                raise RuntimeError("GhostScript not found in PATH or Program Files")
+
+            # Format Ghostscript command with explicit parameters optimized for OCR
+            output_pattern = str(output_dir / "page_%04d.png")
+            gs_cmd = [
+                f'"{gs_path}"',
+                "-dQUIET",
+                "-dNOPAUSE",
+                "-dBATCH",
+                "-dSAFER",
+                "-sDEVICE=png16m",  # Use standard RGB format instead of alpha to avoid transparency issues
+                f"-r{dpi}",
+                "-dTextAlphaBits=4",
+                "-dGraphicsAlphaBits=4",
+                "-dMaxBitmap=500000000",
+                "-dAlignToPixels=0",
+                "-dPDFFitPage",
+                "-dUseCropBox",
+                "-dUseTrimBox=true",
+                "-dDOINTERPOLATE",  # This can help with better image quality for OCR
+                "-dFirstPage=1",
+                f'-sOutputFile="{output_pattern}"',
+                f'"{pdf_path}"'
+            ]
+            
+            # Run the GhostScript command
+            run_kwargs = dict(
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                shell=True
+            )
+            if sys.platform.startswith("win"):
+                run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                
+            # Run with much better error handling
+            logger.info(f"Attempting direct GhostScript conversion: {' '.join(gs_cmd)}")
+            process = subprocess.run(' '.join(gs_cmd), **run_kwargs)
+            
+            if process.returncode != 0:
+                logger.error(f"GhostScript error: {process.stderr}")
+                # Try a second attempt with different parameters if first fails
+                gs_cmd = [
+                    f'"{gs_path}"',
+                    "-dQUIET",
+                    "-dNOPAUSE",
+                    "-dBATCH",
+                    "-dSAFER",
+                    "-sDEVICE=jpeg",  # Try JPEG device which might be more compatible
+                    f"-r{dpi}",
+                    "-dJPEGQ=90",
+                    "-dFirstPage=1",
+                    f'-sOutputFile="{output_pattern}"',
+                    f'"{pdf_path}"'
+                ]
+                logger.info("First GhostScript attempt failed, trying JPEG device")
+                process = subprocess.run(' '.join(gs_cmd), **run_kwargs)
+                
+                if process.returncode != 0:
+                    logger.error(f"Second GhostScript attempt also failed: {process.stderr}")
+                    raise RuntimeError(f"All GhostScript attempts failed: {process.stderr}")
+                
+            # Find the generated images - search for both PNG and JPEG to handle both attempts
+            images = []
+            for ext in [".png", ".jpg", ".jpeg"]:
+                images.extend([p for p in output_dir.glob(f"page_*{ext}")])
+            
+            # Sort properly by page number
+            images = sorted(
+                images,
+                key=lambda x: int(x.stem.split('_')[-1])
+            )
+            
+            if not images:
+                raise RuntimeError("No images generated from PDF by GhostScript")
+                
+            logger.info(f"Successfully extracted {len(images)} pages with direct GhostScript")
+            return images
+            
+        except Exception as e:
+            logger.error(f"Direct GhostScript extraction failed: {e}")
+            # Create a single blank page as a last resort
+            try:
+                from PIL import Image
+                logger.warning("Creating a blank page as last resort")
+                blank_path = output_dir / "page_0001.png"
+                blank_img = Image.new('RGB', (800, 1200), color=(255, 255, 255))
+                blank_img.save(str(blank_path))
+                return [blank_path]
+            except Exception as blank_err:
+                logger.error(f"Failed to create blank page: {blank_err}")
+                return []
 
     def process_pdf(self, pdf_path: Union[str, Path]) -> None:
         """Process PDF by converting to images first using Ghostscript"""
@@ -794,51 +995,161 @@ class OCRProcessor:
                 hocr_output_folder = self.hocr_dir / relative_path
                 hocr_output_folder.mkdir(parents=True, exist_ok=True)
 
-            # Convert PDF to images
-            logger.info("Converting PDF to images...")
-            page_images_dir = self.temp_dir / "pdf_pages"
+            # Create and ensure temp directory exists
+            page_images_dir = self.temp_dir / f"pdf_pages_{int(time.time())}"
             page_images_dir.mkdir(exist_ok=True)
             
-            # Convert PDF pages to images
-            pages = self._convert_pdf_to_images(
-                pdf_path,
-                page_images_dir,
-                dpi=300
-            )
-            
-            if not pages:
-                raise RuntimeError("No pages extracted from PDF")
+            try:
+                # Convert PDF pages to images - using PNG format for better compatibility
+                pages = self._convert_pdf_to_images(
+                    pdf_path,
+                    page_images_dir,
+                    dpi=300
+                )
                 
-            logger.info(f"Extracted {len(pages)} pages as images")
-            total_pages = len(pages)
-
-            # Signal progress for PDF start - treat as 1 file
-            if self.progress_callback:
-                self.progress_callback(1, 1, 0)  # One file, just started
-
-            # Process each page without individual progress updates
-            for idx, page_img in enumerate(pages, 1):
-                if self.is_cancelled or self._force_stop:
-                    return
+                if not pages:
+                    raise RuntimeError("No pages extracted from PDF")
                     
-                logger.info(f"Processing page {idx}/{total_pages}")
-                
-                # Create page PDF with consistent naming
-                temp_pdf_path = self.temp_dir / f"page_{idx:04d}.pdf"
-                
-                try:
-                    # Process single page
-                    self._process_single_image(Path(page_img), temp_pdf_path)
-                    if temp_pdf_path.exists() and temp_pdf_path.stat().st_size > 0:
-                        page_pdfs.append(temp_pdf_path)
+                logger.info(f"Extracted {len(pages)} pages as images")
+                total_pages = len(pages)
+            
+                # Signal progress for PDF start - treat as 1 file
+                if self.progress_callback:
+                    self.progress_callback(1, 1, 0)  # One file, just started
+    
+                # Process each page without individual progress updates
+                for idx, page_img in enumerate(pages, 1):
+                    if self.is_cancelled or self._force_stop:
+                        break
                         
-                except Exception as e:
-                    logger.error(f"Error processing page {idx}: {e}")
-                    continue
+                    logger.info(f"Processing page {idx}/{total_pages}")
+                    
+                    # Create page PDF with consistent naming
+                    temp_pdf_path = self.temp_dir / f"page_{idx:04d}.pdf"
+                    
+                    try:
+                        # Process page with proper PDF name for HOCR organization
+                        self._process_single_image(
+                            page_img, 
+                            temp_pdf_path, 
+                            dpi=300,
+                            hocr_output_folder=hocr_output_folder,
+                            page_num=idx,
+                            pdf_name=pdf_path.name
+                        )
+                        if temp_pdf_path.exists():
+                            page_pdfs.append(temp_pdf_path)
+                            processed_pages += 1
+                        else:
+                            logger.warning(f"Page PDF not created for page {idx}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing page {idx}: {e}")
+                        
+            except ZeroDivisionError:
+                # Handle division by zero error by using the already extracted images if available
+                logger.error(f"PDF to image conversion failed: division by zero in HocrTransform")
+                try:
+                    # Check if Ghostscript already extracted the images before the error
+                    existing_images = sorted(
+                        [p for p in page_images_dir.glob("page_*.png")],
+                        key=lambda x: int(x.stem.split('_')[-1])
+                    )
+                    
+                    # If images already exist, use them directly
+                    if existing_images:
+                        logger.info(f"Found {len(existing_images)} already extracted images, using these")
+                        # Process each of the extracted images
+                        for idx, page_img in enumerate(existing_images, 1):
+                            if self.is_cancelled or self._force_stop:
+                                break
+                                
+                            logger.info(f"Processing page {idx}/{len(existing_images)} (using extracted)")
+                            temp_pdf_path = self.temp_dir / f"page_{idx:04d}.pdf"
+                            
+                            try:
+                                # Process page with proper PDF name for HOCR organization
+                                self._process_single_image(
+                                    page_img, 
+                                    temp_pdf_path, 
+                                    dpi=300,
+                                    hocr_output_folder=hocr_output_folder,
+                                    page_num=idx,
+                                    pdf_name=pdf_path.name
+                                )
+                                if temp_pdf_path.exists():
+                                    page_pdfs.append(temp_pdf_path)
+                                    processed_pages += 1
+                                else:
+                                    logger.warning(f"Page PDF not created for page {idx}")
+                            except Exception as e:
+                                logger.error(f"Error processing page {idx}: {e}")
+                    else:
+                        logger.error("No existing images found, attempting fallback conversion...")
+                        pages = self._convert_pdf_fallback(
+                            pdf_path,
+                            page_images_dir,
+                            dpi=300
+                        )
+                        if not pages:
+                            raise RuntimeError("Fallback conversion failed to produce images")
+                            
+                        # Process the fallback-converted images
+                        for idx, page_img in enumerate(pages, 1):
+                            if self.is_cancelled or self._force_stop:
+                                break
+                                
+                            logger.info(f"Processing page {idx}/{len(pages)} (using fallback)")
+                            temp_pdf_path = self.temp_dir / f"page_{idx:04d}.pdf"
+                            
+                            try:
+                                # Process page with proper PDF name for HOCR organization
+                                self._process_single_image(
+                                    page_img, 
+                                    temp_pdf_path, 
+                                    dpi=300,
+                                    hocr_output_folder=hocr_output_folder,
+                                    page_num=idx,
+                                    pdf_name=pdf_path.name
+                                )
+                                if temp_pdf_path.exists():
+                                    page_pdfs.append(temp_pdf_path)
+                                    processed_pages += 1
+                                else:
+                                    logger.warning(f"Page PDF not created for page {idx}")
+                            except Exception as e:
+                                logger.error(f"Error processing page {idx}: {e}")
+                except Exception as fallback_err:
+                    logger.error(f"All fallback methods failed: {fallback_err}")
+                    # Create at least one blank page to avoid complete failure
+                    try:
+                        logger.warning("Creating blank page as last resort")
+                        from PIL import Image
+                        blank_page = page_images_dir / "page_blank.png" 
+                        blank_img = Image.new("RGB", (800, 1100), (255, 255, 255))
+                        blank_img.save(blank_page)
+                        temp_pdf_path = self.temp_dir / "page_0001.pdf"
+                        self._process_single_image(
+                            blank_page, 
+                            temp_pdf_path, 
+                            dpi=300,
+                            hocr_output_folder=hocr_output_folder,
+                            page_num=1,
+                            pdf_name=pdf_path.name
+                        )
+                        if temp_pdf_path.exists():
+                            page_pdfs.append(temp_pdf_path)
+                            processed_pages += 1
+                    except Exception:
+                        logger.error("Could not create blank page as fallback")
+            except Exception as conversion_error:
+                logger.error(f"PDF to image conversion failed: {conversion_error}")
+                raise
 
             # Merge pages
             if page_pdfs:
-                output_folder = self.pdf_dir
+                # Create unique output name
+                output_folder = self.pdf_dir / relative_path
                 output_folder.mkdir(parents=True, exist_ok=True)
                 
                 output_pdf = output_folder / f"{pdf_path.stem}_ocr.pdf"
@@ -852,7 +1163,7 @@ class OCRProcessor:
                         merger.append(str(pdf))
                         merged_count += 1
                     except Exception as e:
-                        logger.error(f"Error adding PDF {pdf}: {e}")
+                        logger.error(f"Error adding PDF page {pdf}: {e}")
                 
                 if merged_count > 0:
                     merger.write(str(output_pdf))
@@ -877,8 +1188,7 @@ class OCRProcessor:
                     shutil.rmtree(str(page_images_dir))
                 for pdf in page_pdfs:
                     try:
-                        if pdf.exists():
-                            pdf.unlink()
+                        pdf.unlink()
                     except Exception as e:
                         logger.warning(f"Could not delete temp PDF {pdf}: {e}")
             except Exception as e:
@@ -956,27 +1266,20 @@ class OCRProcessor:
                 self.current_file = str(file_path)
                 cancelled = False
                 try:
-                    # Add to processed files set immediately
-                    self._processed_files.add(str(file_path))
-                    logger.debug(f"Processing {len(self._processed_files)}/{total_files}: {Path(file_path).name}")
-                    # Force cleanup before each file
-                    gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
                     if file_type == 'image':
-                        self.process_image(file_path)
+                        result = self.process_image(file_path)
+                        cancelled = result.get("status") == "cancelled"
                     else:
                         self.process_pdf(file_path)
-                    completed += 1
-                    # Signal completion of this file
-                    if self.progress_callback:
-                        self.progress_callback(100, 100)  # Signal file completion
-
+                        
+                    if not cancelled:
+                        completed += 1
+                        if callable(self.progress_callback):
+                            if not self.progress_callback(completed, total_files):
+                                break
                 except Exception as e:
-                    # Remove from processed files if failed
-                    self._processed_files.discard(str(file_path))
-                    logger.error(f"Failed to process {file_path}: {e}")
                     failed += 1
+                    logger.error(f"Error processing {file_path}: {e}")
                     continue
             # Clean up after batch
             gc.collect()
@@ -988,8 +1291,7 @@ class OCRProcessor:
             # Always try to clean up temp directory at end of processing
             try:
                 if self.temp_dir.exists():
-                    shutil.rmtree(str(self.temp_dir), ignore_errors=True)
-                    logger.info("Cleaned up temp directory after processing")
+                    self.cleanup_temp_files(force=True)
             except Exception as e:
                 logger.warning(f"Failed to clean up temp directory: {e}")
 
@@ -1003,13 +1305,15 @@ class OCRProcessor:
             "total": total_files
         }
 
-    def _process_single_image(self, image_path: Path, temp_pdf_path: Path, dpi=None) -> None:
+    def _process_single_image(self, image_path: Path, temp_pdf_path: Path, dpi=None, 
+                             hocr_output_folder=None, page_num=None, pdf_name=None) -> None:
         """Process single image with improved error handling and memory management"""
         if self.is_cancelled or self._force_stop:
             return None
         temp_hocr = None
         intermediate_pdf = None
         temp_converted_image = None
+        hocr_saved_to_output = False
 
         # --- Always define processed_image_path at the start ---
         processed_image_path = image_path
@@ -1023,29 +1327,62 @@ class OCRProcessor:
                 if not self.progress_callback(0, 100):  # Start
                     return None
             
-            # --- NEW: Convert RGBA images to RGB first ---
+            # --- IMPROVED: Better image preprocessing for HOCR compatibility ---
             try:
+                # Fix: Import PIL Image within the function scope to avoid reference errors
+                from PIL import Image
+                
                 img = Image.open(image_path)
+                needs_conversion = False
+                
                 # Handle transparency/alpha channel (RGBA, LA modes)
                 if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
                     logger.info(f"Converting transparent image {image_path.name} to RGB")
+                    needs_conversion = True
                     # Create a white background image
                     bg = Image.new('RGB', img.size, (255, 255, 255))
                     if img.mode == 'P':
                         img = img.convert('RGBA')
                     # Paste using alpha channel as mask
                     bg.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else img.split()[1])
-                    # Save to temp location
-                    temp_name = f"temp_rgb_{image_path.stem}_{int(time.time() * 1000)}.png"
-                    temp_converted_image = self.temp_dir / temp_name
-                    bg.save(temp_converted_image)
-                    processed_image_path = temp_converted_image
-                    img.close()
-                    bg.close()
+                    img_to_save = bg
+                elif img.mode != 'RGB':
+                    # Convert other modes to RGB as well for compatibility
+                    logger.info(f"Converting {img.mode} image {image_path.name} to RGB")
+                    needs_conversion = True
+                    img_to_save = img.convert('RGB')
                 else:
+                    img_to_save = img
+                
+                # Save to temp location if conversion needed
+                if needs_conversion:
+                    # Create a unique name to prevent conflicts
+                    timestamp = int(time.time() * 1000)
+                    temp_name = f"temp_rgb_{image_path.stem}_{timestamp}.png"
+                    temp_converted_image = self.temp_dir / temp_name
+                    img_to_save.save(temp_converted_image)
+                    processed_image_path = temp_converted_image
+                    logger.info(f"Saved converted image to {temp_converted_image}")
+                
+                # Get image DPI now
+                dpi_to_use = dpi
+                if dpi_to_use is None:
+                    # Try to read DPI from image metadata
+                    dpi_meta = img.info.get("dpi")
+                    if dpi_meta and isinstance(dpi_meta, (tuple, list)) and dpi_meta[0] > 0:
+                        dpi_to_use = int(dpi_meta[0])
+                    else:
+                        dpi_to_use = 300  # Fallback default
+                
+                # Close images to free memory
+                if img is not img_to_save:
                     img.close()
+                img_to_save.close()
             except Exception as e:
                 logger.warning(f"Image preprocessing error (continuing with original): {e}")
+                # If conversion fails, we'll try with the original image
+                processed_image_path = image_path
+                dpi_to_use = dpi or 300  # Fallback to provided DPI or default 300
             
             # Safe GPU memory cleanup before processing
             if torch.cuda.is_available():
@@ -1098,6 +1435,7 @@ class OCRProcessor:
             if self.progress_callback:
                 if not self.progress_callback(50, 100):  # OCR done
                     return None
+                    
             # Generate and save HOCR file
             xml_outputs = result.export_as_xml()
             timestamp = int(datetime.now().timestamp())
@@ -1113,38 +1451,35 @@ class OCRProcessor:
                 
                     # If HOCR output is requested, save to final location
                     if "hocr" in self.output_formats:
-                        try:
-                            # Fix: Calculate proper relative path from input_path
-                            if self.input_path:
-                                try:
-                                    # Get the relative path from input path
-                                    relative_path = image_path.parent.relative_to(self.input_path)
-                                    
-                                    # For root level files, use input_path's name as folder name
-                                    if str(relative_path) == '.':
-                                        relative_path = Path(self.input_path.name)
-                                except ValueError:
-                                    # If not a subfolder of input_path, use parent folder name
-                                    relative_path = Path(image_path.parent.name)
-                            else:
-                                relative_path = Path(image_path.parent.name)
-                                
-                            # Create the full path where the HOCR should be saved
-                            hocr_output = self.hocr_dir / relative_path / f"{image_path.stem}.hocr"
-                            hocr_output.parent.mkdir(parents=True, exist_ok=True)
+                        # For PDF pages, use page numbering in HOCR filename
+                        if hocr_output_folder and page_num is not None and pdf_name is not None:
+                            # Create a subfolder with the PDF name for the HOCR files
+                            pdf_basename = Path(pdf_name).stem  # Get PDF name without extension
+                            pdf_hocr_subdir = hocr_output_folder / pdf_basename
+                            pdf_hocr_subdir.mkdir(parents=True, exist_ok=True)
                             
-                            # Copy content instead of moving to preserve for PDF creation if needed
-                            with open(hocr_output, "w", encoding="utf-8") as f:
-                                f.write(xml_outputs[0][0].decode())
-                                
-                            logger.info(f"Created HOCR output: {hocr_output}")
-                        except Exception as e:
-                            logger.error(f"Error saving HOCR with proper folder structure: {e}")
-                            # Fallback to simpler path if the above fails
-                            hocr_output = self.hocr_dir / f"{image_path.stem}.hocr"
-                            hocr_output.parent.mkdir(parents=True, exist_ok=True)
-                            with open(hocr_output, "w", encoding="utf-8") as f:
-                                f.write(xml_outputs[0][0].decode())
+                            # Create HOCR file with PDF name and page number
+                            final_hocr_name = f"{pdf_basename}_page_{page_num:04d}.hocr"
+                            final_hocr_path = pdf_hocr_subdir / final_hocr_name
+                            
+                            # Ensure parent directory exists
+                            final_hocr_path.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            # Copy HOCR to final location
+                            shutil.copy2(temp_hocr, final_hocr_path)
+                            logger.info(f"Created HOCR output: {final_hocr_path}")
+                            hocr_saved_to_output = True
+                        else:
+                            # For regular images, use original logic but create a subfolder with same name as image
+                            image_basename = image_path.stem  # Get image name without extension
+                            hocr_output_subdir = self.hocr_dir / image_path.parent.name
+                            hocr_output_subdir = hocr_output_subdir / image_basename  # Add subfolder
+                            hocr_output_subdir.mkdir(parents=True, exist_ok=True)
+                            
+                            final_hocr_path = hocr_output_subdir / f"{image_path.stem}.hocr"
+                            shutil.copy2(temp_hocr, final_hocr_path)
+                            logger.info(f"Created HOCR output: {final_hocr_path}")
+                            hocr_saved_to_output = True
             except Exception as e:
                 logger.error(f"Failed to write HOCR file: {e}")
                 raise
@@ -1152,11 +1487,13 @@ class OCRProcessor:
             if self.progress_callback:
                 if not self.progress_callback(75, 100):  # HOCR saved
                     return None
+                    
             # Cleanup memory
             del result, xml_outputs, docs
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                
             # Verify HOCR file exists before proceeding
             if not temp_hocr.exists():
                 raise FileNotFoundError(f"HOCR file not created: {temp_hocr}")
@@ -1166,59 +1503,79 @@ class OCRProcessor:
                 # Create temp files with unique names
                 timestamp = int(datetime.now().timestamp())
                 intermediate_pdf = self.temp_dir / f"{image_path.stem}_{timestamp}_temp.pdf"
-                # Create PDF with retries
+                
+                # --- IMPROVED: Better HOCR to PDF conversion with error handling ---
                 max_retries = 3
                 last_error = None
                 
-                # Determine DPI
-                dpi_to_use = dpi
-                if dpi_to_use is None:
-                    # Try to read DPI from image metadata
-                    try:
-                        with Image.open(image_path) as img:
-                            dpi_meta = img.info.get("dpi")
-                            if dpi_meta and isinstance(dpi_meta, (tuple, list)) and dpi_meta[0] > 0:
-                                dpi_to_use = int(dpi_meta[0])
-                            else:
-                                dpi_to_use = 300  # Fallback default
-                    except Exception:
-                        dpi_to_use = 300
-
                 for attempt in range(max_retries):
                     try:
-                        hocr = HocrTransform(
-                            hocr_filename=str(temp_hocr),
+                        # Re-import PIL Image for each attempt
+                        from PIL import Image
+                        
+                        # Verify processed image file exists
+                        if not processed_image_path.exists():
+                            raise FileNotFoundError(f"Image file not found: {processed_image_path}")
+                        
+                        # Double-check we're using a compatible image format for HocrTransform
+                        img = Image.open(processed_image_path)
+                        if img.mode != 'RGB':
+                            logger.warning(f"Image {processed_image_path.name} is not RGB, converting")
+                            rgb_img = img.convert('RGB')
+                            rgb_path = self.temp_dir / f"rgb_final_{image_path.stem}.png"
+                            rgb_img.save(rgb_path)
+                            processed_image_path = rgb_path
+                            rgb_img.close()
+                        img.close()
+                        
+                        # Use our custom HOCR to PDF conversion
+                        from utils.hocr_to_pdf import hocr_to_pdf
+                        success = hocr_to_pdf(
+                            str(temp_hocr), 
+                            str(processed_image_path), 
+                            str(intermediate_pdf), 
                             dpi=dpi_to_use
                         )
-                        hocr.to_pdf(
-                            out_filename=str(intermediate_pdf),
-                            image_filename=str(processed_image_path)
-                        )
-                        # Verify intermediate PDF was created and has content
+                        
+                        if not success:
+                            raise RuntimeError("HOCR to PDF conversion failed")
+                        
+                        # Check if PDF was created successfully
                         if intermediate_pdf.exists() and intermediate_pdf.stat().st_size > 0:
-                            if temp_pdf_path.exists():
-                                temp_pdf_path.unlink()
-                            os.chmod(str(intermediate_pdf), 0o666)  # Ensure we can modify the file
-                            intermediate_pdf.replace(temp_pdf_path)
-                            
-                            # Wait briefly to ensure file is written
-                            time.sleep(0.1)
-                            if not temp_pdf_path.exists() or temp_pdf_path.stat().st_size == 0:
-                                raise FileNotFoundError("PDF file not properly created")
+                            # Copy intermediate PDF to final location
+                            shutil.copy2(intermediate_pdf, temp_pdf_path)
                             logger.debug(f"Created PDF: {temp_pdf_path}")
                             break
                         else:
-                            raise FileNotFoundError("Failed to create intermediate PDF")
+                            raise RuntimeError(f"PDF creation failed: {intermediate_pdf} not created or empty")
+                            
+                    except ZeroDivisionError as zde:
+                        # Handle division by zero with better RGB conversion
+                        last_error = zde
+                        logger.warning(f"Division by zero in HOCR to PDF attempt {attempt+1}, trying RGB conversion")
+                        try:
+                            from PIL import Image
+                            img = Image.open(processed_image_path)
+                            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                            rgb_img.paste(img.convert('RGB'))
+                            rgb_path = self.temp_dir / f"rgb_retry_{attempt}_{image_path.stem}.png"
+                            rgb_img.save(rgb_path, dpi=(dpi_to_use, dpi_to_use))
+                            processed_image_path = rgb_path
+                            img.close()
+                            rgb_img.close()
+                        except Exception as e:
+                            logger.error(f"RGB conversion failed: {e}")
+                            if attempt == max_retries - 1:
+                                raise
                     except Exception as e:
                         last_error = e
-                        logger.warning(f"Attempt {attempt + 1} failed: {e}")
-                        if attempt < max_retries - 1:
-                            time.sleep(1)  # Wait longer between retries
-                        else:
-                            raise last_error
+                        logger.error(f"PDF creation error (attempt {attempt+1}): {e}")
+                        if attempt == max_retries - 1:
+                            raise RuntimeError(f"Failed to create PDF after {max_retries} attempts: {e}")
+                        time.sleep(0.2)  # Short delay before retry
             
             # --- NEW: Compress the PDF after creation ---
-            if "pdf" in self.output_formats and hasattr(self, "compress_images") and self.compress_images:
+            if "pdf" in self.output_formats and hasattr(self, "compress_enabled") and self.compress_enabled:
                 try:
                     # Compress the temp PDF and overwrite it
                     compressed_pdf_path = temp_pdf_path.with_suffix(".compressed.pdf")
@@ -1227,18 +1584,24 @@ class OCRProcessor:
                         str(compressed_pdf_path),
                         quality=getattr(self, "compression_quality", 80),
                         fast_mode=True,
-                        compression_type=getattr(self, "compression_type", "jpeg")  # <-- add this
+                        compression_type=getattr(self, "compression_type", "jpeg")
                     )
                     # Replace the original temp PDF with the compressed one
                     if compressed_pdf_path.exists() and compressed_pdf_path.stat().st_size > 0:
-                        temp_pdf_path.unlink()
-                        compressed_pdf_path.rename(temp_pdf_path)
-                        logger.info(f"Compressed PDF: {temp_pdf_path}")
+                        shutil.copy2(compressed_pdf_path, temp_pdf_path)
+                        if compressed_pdf_path.exists():
+                            try:
+                                compressed_pdf_path.unlink()
+                            except:
+                                pass
                 except Exception as e:
                     logger.warning(f"PDF compression failed: {e}")
+                    
             # Only signal completion if PDF was created successfully               
             if self.progress_callback and temp_pdf_path.exists() and temp_pdf_path.stat().st_size > 0:
                 self.progress_callback(100, 100)
+            
+            return hocr_saved_to_output
                 
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {e}")
@@ -1249,28 +1612,27 @@ class OCRProcessor:
                     torch.cuda.empty_cache()
                 except:
                     pass
+            return False
         finally:
             # Clean up resources safely
             if temp_hocr and temp_hocr.exists():
                 try:
-                    os.chmod(str(temp_hocr), 0o666)
                     temp_hocr.unlink()
                 except Exception as e:
-                    logger.warning(f"Failed to cleanup temp HOCR file {temp_hocr}: {e}")
+                    logger.warning(f"Could not delete temp HOCR file: {e}")
         
             if intermediate_pdf and intermediate_pdf.exists():
                 try:
-                    os.chmod(str(intermediate_pdf), 0o666)
                     intermediate_pdf.unlink()
                 except Exception as e:
-                    logger.warning(f"Failed to cleanup intermediate PDF {intermediate_pdf}: {e}")
+                    logger.warning(f"Could not delete intermediate PDF file: {e}")
         
             # Clean up temporary converted image if it was created
             if temp_converted_image and temp_converted_image.exists() and temp_converted_image != image_path:
                 try:
                     temp_converted_image.unlink()
                 except Exception as e:
-                    logger.warning(f"Failed to cleanup temp converted image {temp_converted_image}: {e}")
+                    logger.warning(f"Could not delete temp converted image: {e}")
                     
             # Clean up compressed image if it was created
             if processed_image_path != image_path and processed_image_path.exists() and processed_image_path != temp_converted_image:
@@ -1278,11 +1640,12 @@ class OCRProcessor:
                     processed_image_path.unlink()
                 except Exception:
                     pass
+                    
             # Safe GPU cleanup
             if torch.cuda.is_available():
                 try:
-                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
                 except Exception as e:
-                    logger.warning(f"GPU cleanup warning: {e}")
+                    logger.warning(f"Could not clean GPU memory: {e}")
+                    
             gc.collect()

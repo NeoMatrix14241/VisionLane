@@ -59,3 +59,4 @@ typing_extensions==4.13.2
 pyinstaller==6.13.0
 nuitka==2.7.3
 zstandard==0.22.0
+reportlab==4.4.1
