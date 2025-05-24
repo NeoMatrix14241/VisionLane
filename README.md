@@ -18,7 +18,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 
 - 🚀 GPU-accelerated OCR processing using CUDA
 - 📁 Batch processing support for multiple files
-- 📄 Support for multiple input formats (TIFF, JPEG, PNG, PDF)
+- 📄 Support for multiple input formats (TIFF, JPEG, PNG, BMP, GIF, and more)
 - 🔄 Concurrent processing with multi-threading
 - 💾 Output in PDF and HOCR formats
 - 🖥️ PyQt6-based GUI interface
@@ -65,6 +65,8 @@ The following features and improvements are planned for future releases:
   _→ The module: fitz (PyMuPDF) are not included in build.spec file which is required for PyPDFCompressor_
 - [x] **Hotfix:** Removed PyMuPDF/fitz import/module  
   _→ PDF compression now relies solely on Ghostscript; all fitz/PyMuPDF code and dependencies have been removed for better compatibility for Nuitka._
+- [x] Fix unsupported images, apparently only the TIFF files are getting processed
+  _→ Added support for various image formats including JPEG, PNG, BMP, GIF, and more_
 - [ ] Add an option to switch GPU and CPU  
   _→ GPU acceleration can be disabled and use CPU instead_
 - [ ] Add a function to check if the recommended 8GB VRAM is met, else suggest to switch to CPU  
@@ -73,7 +75,7 @@ The following features and improvements are planned for future releases:
   _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
 - [ ] Fix OCRmyPDF related bugs causing no output when HOCR output is selected
   _→ OCRmyPDF causes "Division By Zero Error" resulting without any output at all_
-- [ ] Fix RGBA issues on some image
+- [x] Fix RGBA issues on some image
   _→ RGB is the only channel supported by HOCR transform of OCRmyPDF_
 
 ### 📁 File Handling Enhancements
@@ -83,9 +85,9 @@ The following features and improvements are planned for future releases:
   _→ Preserve searchable text while applying JPEG-based compression_
 - [x] Fix where it suddenly creates output folder in the repository when running  
   _→ It remains there ever since I started making it as CLI based OCR processor_
-- [ ] Fix PDF output's folder structure when processing PDF files
+- [x] Fix PDF output's folder structure when processing PDF files
   _→ PDF files have incorrect output and folder structure after processing_
-- [ ] Fix unsupported images, apparently only the TIFF files are getting processed
+- [x] Fix unsupported images, apparently only the TIFF files are getting processed
   _→ Will add various images supported in the future_
 
 ### 🎨 UI/UX Features
@@ -177,7 +179,7 @@ python main.py
    - Click "Start Processing" to begin OCR
 
 ### Input Formats Supported:
-- Images: TIFF, JPEG, PNG
+- Images: TIFF, JPEG, PNG, BMP, GIF, and more
 - Documents: PDF
 
 ### Output Formats:

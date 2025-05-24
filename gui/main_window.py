@@ -835,7 +835,7 @@ class MainWindow(QMainWindow):
             self,
             "Select Image File",
             "",
-            "Image Files (*.tif *.tiff *.jpg *.jpeg *.png)"
+            "Image Files (*.tif *.tiff *.jpg *.jpeg *.png *.bmp *.gif *.dib *.jpe *.jiff *.heic);;PDF Files (*.pdf)"
         )
         if file_path:
             self.selected_paths['single'] = Path(file_path)
@@ -870,7 +870,7 @@ class MainWindow(QMainWindow):
 
     def _count_supported_files(self, folder_path: str) -> dict:
         folder = Path(folder_path)
-        image_extensions = ['.tif', '.tiff', '.jpg', '.jpeg', '.png']
+        image_extensions = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
         images = 0
         pdfs = 0
         
@@ -1523,7 +1523,7 @@ class MainWindow(QMainWindow):
 
             # Store the list of files to process for progress display
             if mode == 'folder':
-                image_exts = ['.tif', '.tiff', '.jpg', '.jpeg', '.png']
+                image_exts = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
                 folder = Path(path)
                 files = []
                 for ext in image_exts:

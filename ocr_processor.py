@@ -480,12 +480,27 @@ class OCRProcessor:
             if not self.temp_dir.exists():
                 self.temp_dir.mkdir(parents=True, exist_ok=True)
 
-            # Get all images in current folder and sort them
-            all_images = sorted([
-                p for p in image_path.parent.glob("*.tif")
-                if p.is_file()
-            ], key=lambda x: x.name)
-            current_index = all_images.index(image_path)
+            # --- FIX: Get all images of supported formats in current folder and sort them ---
+            image_extensions = ['*.tif', '*.tiff', '*.jpg', '*.jpeg', '*.png', '*.bmp', '*.gif', '*.dib', '*.jpe', '*.jiff', '*.heic']
+            all_images = []
+            for ext in image_extensions:
+                all_images.extend([p for p in image_path.parent.glob(ext) if p.is_file()])
+            # Sort by name for consistent ordering
+            all_images = sorted(all_images, key=lambda x: x.name)
+            
+            if not image_path in all_images:
+                logger.warning(f"Image not found in sorted list, appending: {image_path}")
+                all_images.append(image_path)
+                
+            # Find index of current image
+            try:
+                current_index = all_images.index(image_path)
+            except ValueError:
+                # If for some reason the image isn't found, process it independently
+                logger.warning(f"Image not found in list, using independent processing: {image_path}")
+                current_index = 0
+                all_images = [image_path]
+                
             total_images = len(all_images)
             logger.info(f"Processing image {current_index + 1}/{total_images}: {image_path.name}")
             logger.debug(f"Folder key: {folder_key}")
@@ -512,364 +527,20 @@ class OCRProcessor:
         finally:
             self._running_threads.discard(current_thread)
 
-    def process_folder(self, folder_path: Union[str, Path]) -> Dict:
-        """Process a folder of images"""
-        if not self.output_base_dir:
-            raise ValueError("Output directory not set. Call set_output_directory first.")
-            
-        # Make input path absolute
-        folder_path = Path(folder_path).resolve()
-        abs_path = str(folder_path.absolute())
-        self.input_path = folder_path
-        logger.info(f"\nSelected: {abs_path}")
-
-        # Create timestamped subfolder for this processing session
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.session_dir = self.output_base_dir / f"OCR_Session_{timestamp}"
-
-        # Update subdirectories to be within the session directory
-        self.hocr_dir = self.session_dir / "hocr"
-        self.pdf_dir = self.session_dir / "pdf"
-        self.temp_dir = self.session_dir / "temp"
-
-        # Create output directories
-        for dir_path in [self.session_dir, self.hocr_dir, self.pdf_dir, self.temp_dir]:
-            dir_path.mkdir(parents=True, exist_ok=True)
-            logger.debug(f"Created directory: {dir_path}")
-
-        logger.info(f"Output will be saved to: {self.session_dir}")
-
-        # Count files by type first
-        image_files = []
-        pdf_files = []
-        for path in folder_path.rglob('*'):
-            if path.is_file():
-                if path.suffix.lower() in ['.tif', '.tiff']:
-                    image_files.append(path)
-                elif path.suffix.lower() == '.pdf':
-                    pdf_files.append(path)
-        logger.info(f"Found: {len(image_files)} images, {len(pdf_files)} pdf\n")
-
-        # Continue with existing processing
-        all_files = [('image', p) for p in image_files]
-        all_files.extend(('pdf', p) for p in pdf_files)
-        total_files = len(all_files)
-        if not total_files:
-            logger.warning(f"No supported files found in folder: {folder_path}")
-            return {"status": "no_files", "processed": 0, "total": 0}
-        logger.info(f"Starting batch processing: {len(all_files)} files")
-
-        # Initialize state
-        self.is_cancelled = False
-        self.current_file = None
-        completed = 0
-        failed = 0
-        # Emit initial progress safely
-        if callable(self.progress_callback):
-            try:
-                if not self.progress_callback(0, total_files):
-                    return {"status": "cancelled", "processed": 0, "total": total_files}
-            except Exception as e:
-                logger.error(f"Progress callback error: {e}")
-        try:
-            # Process files one at a time to prevent memory issues
-            for file_type, file_path in all_files:
-                if self.is_cancelled or self._force_stop:
-                    break
-                    
-                self.current_file = str(file_path)
-                cancelled = False
-                try:
-                    # Add to processed files set immediately
-                    self._processed_files.add(str(file_path))
-                    logger.debug(f"Processing {len(self._processed_files)}/{total_files}: {Path(file_path).name}")
-                    # Force cleanup before each file
-                    gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    if file_type == 'image':
-                        self.process_image(file_path)
-                    else:
-                        self.process_pdf(file_path)
-                    completed += 1
-                    # Signal completion of this file
-                    if self.progress_callback:
-                        self.progress_callback(100, 100)  # Signal file completion
-
-                except Exception as e:
-                    # Remove from processed files if failed
-                    self._processed_files.discard(str(file_path))
-                    logger.error(f"Failed to process {file_path}: {e}")
-                    failed += 1
-                    continue
-            # Clean up after batch
-            gc.collect()
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
-        except Exception as e:
-            logger.error(f"Batch processing error: {e}", exc_info=True)
-            raise
-        finally:
-            # Always try to clean up temp directory at end of processing
-            try:
-                if self.temp_dir.exists():
-                    shutil.rmtree(str(self.temp_dir), ignore_errors=True)
-                    logger.info("Cleaned up temp directory after processing")
-            except Exception as e:
-                logger.warning(f"Failed to clean up temp directory: {e}")
-
-        status = "cancelled" if self.is_cancelled else "success"
-        if failed > 0:
-            status = "partial"
-        return {
-            "status": status,
-            "processed": completed,
-            "failed": failed,
-            "total": total_files
-        }
-
-    # Add alias for backward compatibility
-    def _process_single_file(self, file_path: Union[str, Path]) -> None:
-        """Alias for process_image for backward compatibility"""
-        return self.process_image(file_path)
-                
-    def _process_single_image(self, image_path: Path, temp_pdf_path: Path, dpi=None) -> None:
-        """Process single image with improved error handling and memory management"""
-        if self.is_cancelled or self._force_stop:
-            return None
-        temp_hocr = None
-        intermediate_pdf = None
-
-        # --- Always define processed_image_path at the start ---
-        processed_image_path = image_path
-        try:
-            # --- REMOVE: Compress image before PDF creation ---
-
-            # Check cancellation state
-            if self.is_cancelled or self._force_stop:
-                return None
-                
-            # Progress updates
-            if self.progress_callback:
-                if not self.progress_callback(0, 100):  # Start
-                    return None
-            
-            # Safe GPU memory cleanup before processing
-            if torch.cuda.is_available():
-                try:
-                    # Add synchronization point and environment variable
-                    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-                    torch.cuda.synchronize()
-                    torch.cuda.empty_cache()
-                    torch.cuda.reset_peak_memory_stats()
-                except Exception as e:
-                    # If CUDA fails, force CPU mode
-                    logger.warning(f"GPU error detected, switching to CPU: {e}")
-                    self.device = 'cpu'
-                    if hasattr(self, 'model'):
-                        self.model = self.model.cpu()
-            
-            # Move input to correct device with error handling
-            try:
-                docs = DocumentFile.from_images(str(processed_image_path))
-                if self.device == 'cuda':
-                    torch.cuda.synchronize()
-            except Exception as e:
-                logger.error(f"Error loading image {processed_image_path}: {e}")
-                self.device = 'cpu'
-                self.model = self.model.cpu()
-                docs = DocumentFile.from_images(str(processed_image_path))
-            
-            if self.progress_callback:
-                if not self.progress_callback(25, 100):  # Document loaded
-                    return None
-            
-            # Process with error handling    
-            try:
-                with torch.no_grad():
-                    # Process in smaller batches if needed
-                    result = self.model(docs)
-                    if self.device == 'cuda':
-                        torch.cuda.synchronize()  # Wait for CUDA operations
-            except RuntimeError as e:
-                if "CUDA" in str(e):
-                    # Try to recover by moving to CPU
-                    logger.warning("CUDA error encountered, falling back to CPU")
-                    self.device = 'cpu'
-                    self.model = self.model.cpu()
-                    with torch.no_grad():
-                        result = self.model(docs)
-                else:
-                    raise
-        
-            if self.progress_callback:
-                if not self.progress_callback(50, 100):  # OCR done
-                    return None
-            # Generate and save HOCR file
-            xml_outputs = result.export_as_xml()
-            timestamp = int(datetime.now().timestamp())
-            temp_hocr = self.temp_dir / f"{image_path.stem}_{timestamp}_temp.hocr"
-            
-            try:
-                # Save HOCR if it's in output formats or needed for PDF
-                hocr_needed = "hocr" in self.output_formats or "pdf" in self.output_formats
-                if hocr_needed:
-                    # Save temp HOCR first
-                    with open(temp_hocr, "w", encoding="utf-8") as f:
-                        f.write(xml_outputs[0][0].decode())
-                
-                    # If HOCR output is requested, save to final location
-                    if "hocr" in self.output_formats:
-                        relative_path = image_path.parent.relative_to(self.input_path)
-                        hocr_output = self.hocr_dir / relative_path / f"{image_path.stem}.hocr"
-                        hocr_output.parent.mkdir(parents=True, exist_ok=True)
-                        # Copy content instead of moving to preserve for PDF creation if needed
-                        with open(hocr_output, "w", encoding="utf-8") as f:
-                            f.write(xml_outputs[0][0].decode())
-                        logger.info(f"Created HOCR output: {hocr_output}")
-            except Exception as e:
-                logger.error(f"Failed to write HOCR file: {e}")
-                raise
-            
-            if self.progress_callback:
-                if not self.progress_callback(75, 100):  # HOCR saved
-                    return None
-            # Cleanup memory
-            del result, xml_outputs, docs
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            # Verify HOCR file exists before proceeding
-            if not temp_hocr.exists():
-                raise FileNotFoundError(f"HOCR file not created: {temp_hocr}")
-            
-            # Only create PDF if requested
-            if "pdf" in self.output_formats:
-                # Create temp files with unique names
-                timestamp = int(datetime.now().timestamp())
-                intermediate_pdf = self.temp_dir / f"{image_path.stem}_{timestamp}_temp.pdf"
-                # Create PDF with retries
-                max_retries = 3
-                last_error = None
-                
-                # Determine DPI
-                dpi_to_use = dpi
-                if dpi_to_use is None:
-                    # Try to read DPI from image metadata
-                    try:
-                        with Image.open(image_path) as img:
-                            dpi_meta = img.info.get("dpi")
-                            if dpi_meta and isinstance(dpi_meta, (tuple, list)) and dpi_meta[0] > 0:
-                                dpi_to_use = int(dpi_meta[0])
-                            else:
-                                dpi_to_use = 300  # Fallback default
-                    except Exception:
-                        dpi_to_use = 300
-
-                for attempt in range(max_retries):
-                    try:
-                        hocr = HocrTransform(
-                            hocr_filename=str(temp_hocr),
-                            dpi=dpi_to_use
-                        )
-                        hocr.to_pdf(
-                            out_filename=str(intermediate_pdf),
-                            image_filename=str(processed_image_path)
-                        )
-                        # Verify intermediate PDF was created and has content
-                        if intermediate_pdf.exists() and intermediate_pdf.stat().st_size > 0:
-                            if temp_pdf_path.exists():
-                                temp_pdf_path.unlink()
-                            os.chmod(str(intermediate_pdf), 0o666)  # Ensure we can modify the file
-                            intermediate_pdf.replace(temp_pdf_path)
-                            
-                            # Wait briefly to ensure file is written
-                            time.sleep(0.1)
-                            if not temp_pdf_path.exists() or temp_pdf_path.stat().st_size == 0:
-                                raise FileNotFoundError("PDF file not properly created")
-                            logger.debug(f"Created PDF: {temp_pdf_path}")
-                            break
-                        else:
-                            raise FileNotFoundError("Failed to create intermediate PDF")
-                    except Exception as e:
-                        last_error = e
-                        logger.warning(f"Attempt {attempt + 1} failed: {e}")
-                        if attempt < max_retries - 1:
-                            time.sleep(1)  # Wait longer between retries
-                        else:
-                            raise last_error
-            
-            # --- NEW: Compress the PDF after creation ---
-            if "pdf" in self.output_formats:
-                # After temp_pdf_path is created and verified:
-                if getattr(self, "compress_images", False):
-                    try:
-                        # Compress the temp PDF and overwrite it
-                        compressed_pdf_path = temp_pdf_path.with_suffix(".compressed.pdf")
-                        compress_pdf(
-                            str(temp_pdf_path),
-                            str(compressed_pdf_path),
-                            quality=getattr(self, "compression_quality", 80),
-                            fast_mode=True,
-                            compression_type=getattr(self, "compression_type", "jpeg")  # <-- add this
-                        )
-                        # Replace the original temp PDF with the compressed one
-                        if compressed_pdf_path.exists() and compressed_pdf_path.stat().st_size > 0:
-                            temp_pdf_path.unlink()
-                            compressed_pdf_path.rename(temp_pdf_path)
-                            logger.info(f"Compressed PDF: {temp_pdf_path}")
-                    except Exception as e:
-                        logger.warning(f"PDF compression failed: {e}")
-            # Only signal completion if PDF was created successfully               
-            if self.progress_callback and temp_pdf_path.exists() and temp_pdf_path.stat().st_size > 0:
-                self.progress_callback(100, 100)
-                
-        except Exception as e:
-            logger.error(f"Error processing image {image_path}: {e}")
-            # Safe cleanup on error
-            if torch.cuda.is_available():
-                try:
-                    torch.cuda.synchronize()
-                    torch.cuda.empty_cache()
-                except:
-                    pass
-        finally:
-            # Clean up resources safely
-            if temp_hocr and temp_hocr.exists():
-                try:
-                    os.chmod(str(temp_hocr), 0o666)
-                    temp_hocr.unlink()
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup temp HOCR file {temp_hocr}: {e}")
-        
-            if intermediate_pdf and intermediate_pdf.exists():
-                try:
-                    os.chmod(str(intermediate_pdf), 0o666)
-                    intermediate_pdf.unlink()
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup intermediate PDF {intermediate_pdf}: {e}")
-        
-            # Clean up compressed image if it was created
-            if getattr(self, "compress_images", False):
-                try:
-                    if processed_image_path != image_path and processed_image_path.exists():
-                        processed_image_path.unlink()
-                except Exception:
-                    pass
-            # Safe GPU cleanup
-            if torch.cuda.is_available():
-                try:
-                    torch.cuda.synchronize()
-                    torch.cuda.empty_cache()
-                except Exception as e:
-                    logger.warning(f"GPU cleanup warning: {e}")
-            gc.collect()
-
     def _is_last_image_in_folder(self, image_path: Path) -> bool:
         """
         Check if this is the last image to be processed in the folder
         """
         folder_path = image_path.parent
-        all_images = sorted(list(folder_path.glob("*.tif")))
+        
+        # Get all supported image files in the folder
+        image_extensions = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
+        all_images = []
+        
+        for ext in image_extensions:
+            all_images.extend([p for p in folder_path.glob(f"*{ext}") if p.is_file()])
+        
+        all_images = sorted(all_images)
         return image_path == all_images[-1]
 
     def _merge_folder_pdfs(self, folder_key: str, relative_path: Path) -> None:
@@ -881,9 +552,16 @@ class OCRProcessor:
 
             # --- FIX: Only count images in the current subfolder, not all input_path ---
             folder_abs = self.input_path / relative_path if not relative_path.is_absolute() else relative_path
-            expected_count = len(list(folder_abs.glob("*.tif")))
+            
+            # --- FIX: Include all supported image formats in expected count ---
+            image_extensions = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
+            
+            expected_count = 0
+            for ext in image_extensions:
+                expected_count += len([p for p in folder_abs.glob(f"*{ext}") if p.is_file()])
+            
             if expected_count == 0:
-                logger.warning(f"No images found in folder: {folder_abs}")
+                logger.warning(f"No supported images found in folder: {folder_abs}")
                 return
 
             # --- FIX: Always create temp_dir if missing (can be deleted after previous merge) ---
@@ -1174,19 +852,380 @@ class OCRProcessor:
             except Exception as e:
                 logger.warning(f"Error during cleanup: {e}")
 
-    def __del__(self):
-        """Ensure cleanup on deletion"""
+    def process_folder(self, folder_path: Union[str, Path]) -> Dict:
+        """Process a folder of images"""
+        if not self.output_base_dir:
+            raise ValueError("Output directory not set. Call set_output_directory first.")
+            
+        # Make input path absolute
+        folder_path = Path(folder_path).resolve()
+        abs_path = str(folder_path.absolute())
+        self.input_path = folder_path
+        logger.info(f"\nSelected: {abs_path}")
+
+        # Create timestamped subfolder for this processing session
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_dir = self.output_base_dir / f"OCR_Session_{timestamp}"
+
+        # Update subdirectories to be within the session directory
+        self.hocr_dir = self.session_dir / "hocr"
+        self.pdf_dir = self.session_dir / "pdf"
+        self.temp_dir = self.session_dir / "temp"
+
+        # Create output directories
+        for dir_path in [self.session_dir, self.hocr_dir, self.pdf_dir, self.temp_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created directory: {dir_path}")
+
+        logger.info(f"Output will be saved to: {self.session_dir}")
+
+        # Count files by type first
+        image_files = []
+        pdf_files = []
+        
+        # Define supported image extensions
+        image_extensions = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
+        
+        for path in folder_path.rglob('*'):
+            if path.is_file():
+                if path.suffix.lower() in image_extensions:
+                    image_files.append(path)
+                elif path.suffix.lower() == '.pdf':
+                    pdf_files.append(path)
+        logger.info(f"Found: {len(image_files)} images, {len(pdf_files)} pdf\n")
+
+        # Continue with existing processing
+        all_files = [('image', p) for p in image_files]
+        all_files.extend(('pdf', p) for p in pdf_files)
+        total_files = len(all_files)
+        if not total_files:
+            logger.warning(f"No supported files found in folder: {folder_path}")
+            return {"status": "no_files", "processed": 0, "total": 0}
+        logger.info(f"Starting batch processing: {len(all_files)} files")
+
+        # Initialize state
+        self.is_cancelled = False
+        self.current_file = None
+        completed = 0
+        failed = 0
+        # Emit initial progress safely
+        if callable(self.progress_callback):
+            try:
+                if not self.progress_callback(0, total_files):
+                    return {"status": "cancelled", "processed": 0, "total": total_files}
+            except Exception as e:
+                logger.error(f"Progress callback error: {e}")
         try:
-            # Cleanup thread pool
-            if hasattr(self, 'thread_pool'):
-                self.thread_pool.shutdown(wait=False)
+            # Process files one at a time to prevent memory issues
+            for file_type, file_path in all_files:
+                if self.is_cancelled or self._force_stop:
+                    break
+                    
+                self.current_file = str(file_path)
+                cancelled = False
+                try:
+                    # Add to processed files set immediately
+                    self._processed_files.add(str(file_path))
+                    logger.debug(f"Processing {len(self._processed_files)}/{total_files}: {Path(file_path).name}")
+                    # Force cleanup before each file
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    if file_type == 'image':
+                        self.process_image(file_path)
+                    else:
+                        self.process_pdf(file_path)
+                    completed += 1
+                    # Signal completion of this file
+                    if self.progress_callback:
+                        self.progress_callback(100, 100)  # Signal file completion
+
+                except Exception as e:
+                    # Remove from processed files if failed
+                    self._processed_files.discard(str(file_path))
+                    logger.error(f"Failed to process {file_path}: {e}")
+                    failed += 1
+                    continue
+            # Clean up after batch
+            gc.collect()
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        except Exception as e:
+            logger.error(f"Batch processing error: {e}", exc_info=True)
+            raise
+        finally:
+            # Always try to clean up temp directory at end of processing
+            try:
+                if self.temp_dir.exists():
+                    shutil.rmtree(str(self.temp_dir), ignore_errors=True)
+                    logger.info("Cleaned up temp directory after processing")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp directory: {e}")
+
+        status = "cancelled" if self.is_cancelled else "success"
+        if failed > 0:
+            status = "partial"
+        return {
+            "status": status,
+            "processed": completed,
+            "failed": failed,
+            "total": total_files
+        }
+
+    def _process_single_image(self, image_path: Path, temp_pdf_path: Path, dpi=None) -> None:
+        """Process single image with improved error handling and memory management"""
+        if self.is_cancelled or self._force_stop:
+            return None
+        temp_hocr = None
+        intermediate_pdf = None
+        temp_converted_image = None
+
+        # --- Always define processed_image_path at the start ---
+        processed_image_path = image_path
+        try:
+            # Check cancellation state
+            if self.is_cancelled or self._force_stop:
+                return None
+                
+            # Progress updates
+            if self.progress_callback:
+                if not self.progress_callback(0, 100):  # Start
+                    return None
             
-            # Force cleanup temp files and directory
-            self.cleanup_temp_files(force=True)
+            # --- NEW: Convert RGBA images to RGB first ---
+            try:
+                img = Image.open(image_path)
+                # Handle transparency/alpha channel (RGBA, LA modes)
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    logger.info(f"Converting transparent image {image_path.name} to RGB")
+                    # Create a white background image
+                    bg = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    # Paste using alpha channel as mask
+                    bg.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else img.split()[1])
+                    # Save to temp location
+                    temp_name = f"temp_rgb_{image_path.stem}_{int(time.time() * 1000)}.png"
+                    temp_converted_image = self.temp_dir / temp_name
+                    bg.save(temp_converted_image)
+                    processed_image_path = temp_converted_image
+                    img.close()
+                    bg.close()
+                else:
+                    img.close()
+            except Exception as e:
+                logger.warning(f"Image preprocessing error (continuing with original): {e}")
             
-            # Clear GPU memory
+            # Safe GPU memory cleanup before processing
+            if torch.cuda.is_available():
+                try:
+                    # Add synchronization point and environment variable
+                    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                    torch.cuda.reset_peak_memory_stats()
+                except Exception as e:
+                    # If CUDA fails, force CPU mode
+                    logger.warning(f"GPU error detected, switching to CPU: {e}")
+                    self.device = 'cpu'
+                    if hasattr(self, 'model'):
+                        self.model = self.model.cpu()
+            
+            # Move input to correct device with error handling
+            try:
+                docs = DocumentFile.from_images(str(processed_image_path))
+                if self.device == 'cuda':
+                    torch.cuda.synchronize()
+            except Exception as e:
+                logger.error(f"Error loading image {processed_image_path}: {e}")
+                self.device = 'cpu'
+                self.model = self.model.cpu()
+                docs = DocumentFile.from_images(str(processed_image_path))
+            
+            if self.progress_callback:
+                if not self.progress_callback(25, 100):  # Document loaded
+                    return None
+            
+            # Process with error handling    
+            try:
+                with torch.no_grad():
+                    # Process in smaller batches if needed
+                    result = self.model(docs)
+                    if self.device == 'cuda':
+                        torch.cuda.synchronize()  # Wait for CUDA operations
+            except RuntimeError as e:
+                if "CUDA" in str(e):
+                    # Try to recover by moving to CPU
+                    logger.warning("CUDA error encountered, falling back to CPU")
+                    self.device = 'cpu'
+                    self.model = self.model.cpu()
+                    with torch.no_grad():
+                        result = self.model(docs)
+                else:
+                    raise
+        
+            if self.progress_callback:
+                if not self.progress_callback(50, 100):  # OCR done
+                    return None
+            # Generate and save HOCR file
+            xml_outputs = result.export_as_xml()
+            timestamp = int(datetime.now().timestamp())
+            temp_hocr = self.temp_dir / f"{image_path.stem}_{timestamp}_temp.hocr"
+            
+            try:
+                # Save HOCR if it's in output formats or needed for PDF
+                hocr_needed = "hocr" in self.output_formats or "pdf" in self.output_formats
+                if hocr_needed:
+                    # Save temp HOCR first
+                    with open(temp_hocr, "w", encoding="utf-8") as f:
+                        f.write(xml_outputs[0][0].decode())
+                
+                    # If HOCR output is requested, save to final location
+                    if "hocr" in self.output_formats:
+                        relative_path = image_path.parent.relative_to(self.input_path)
+                        hocr_output = self.hocr_dir / relative_path / f"{image_path.stem}.hocr"
+                        hocr_output.parent.mkdir(parents=True, exist_ok=True)
+                        # Copy content instead of moving to preserve for PDF creation if needed
+                        with open(hocr_output, "w", encoding="utf-8") as f:
+                            f.write(xml_outputs[0][0].decode())
+                        logger.info(f"Created HOCR output: {hocr_output}")
+            except Exception as e:
+                logger.error(f"Failed to write HOCR file: {e}")
+                raise
+            
+            if self.progress_callback:
+                if not self.progress_callback(75, 100):  # HOCR saved
+                    return None
+            # Cleanup memory
+            del result, xml_outputs, docs
+            gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            # Verify HOCR file exists before proceeding
+            if not temp_hocr.exists():
+                raise FileNotFoundError(f"HOCR file not created: {temp_hocr}")
+            
+            # Only create PDF if requested
+            if "pdf" in self.output_formats:
+                # Create temp files with unique names
+                timestamp = int(datetime.now().timestamp())
+                intermediate_pdf = self.temp_dir / f"{image_path.stem}_{timestamp}_temp.pdf"
+                # Create PDF with retries
+                max_retries = 3
+                last_error = None
+                
+                # Determine DPI
+                dpi_to_use = dpi
+                if dpi_to_use is None:
+                    # Try to read DPI from image metadata
+                    try:
+                        with Image.open(image_path) as img:
+                            dpi_meta = img.info.get("dpi")
+                            if dpi_meta and isinstance(dpi_meta, (tuple, list)) and dpi_meta[0] > 0:
+                                dpi_to_use = int(dpi_meta[0])
+                            else:
+                                dpi_to_use = 300  # Fallback default
+                    except Exception:
+                        dpi_to_use = 300
+
+                for attempt in range(max_retries):
+                    try:
+                        hocr = HocrTransform(
+                            hocr_filename=str(temp_hocr),
+                            dpi=dpi_to_use
+                        )
+                        hocr.to_pdf(
+                            out_filename=str(intermediate_pdf),
+                            image_filename=str(processed_image_path)
+                        )
+                        # Verify intermediate PDF was created and has content
+                        if intermediate_pdf.exists() and intermediate_pdf.stat().st_size > 0:
+                            if temp_pdf_path.exists():
+                                temp_pdf_path.unlink()
+                            os.chmod(str(intermediate_pdf), 0o666)  # Ensure we can modify the file
+                            intermediate_pdf.replace(temp_pdf_path)
+                            
+                            # Wait briefly to ensure file is written
+                            time.sleep(0.1)
+                            if not temp_pdf_path.exists() or temp_pdf_path.stat().st_size == 0:
+                                raise FileNotFoundError("PDF file not properly created")
+                            logger.debug(f"Created PDF: {temp_pdf_path}")
+                            break
+                        else:
+                            raise FileNotFoundError("Failed to create intermediate PDF")
+                    except Exception as e:
+                        last_error = e
+                        logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(1)  # Wait longer between retries
+                        else:
+                            raise last_error
+            
+            # --- NEW: Compress the PDF after creation ---
+            if "pdf" in self.output_formats and hasattr(self, "compress_images") and self.compress_images:
+                try:
+                    # Compress the temp PDF and overwrite it
+                    compressed_pdf_path = temp_pdf_path.with_suffix(".compressed.pdf")
+                    compress_pdf(
+                        str(temp_pdf_path),
+                        str(compressed_pdf_path),
+                        quality=getattr(self, "compression_quality", 80),
+                        fast_mode=True,
+                        compression_type=getattr(self, "compression_type", "jpeg")  # <-- add this
+                    )
+                    # Replace the original temp PDF with the compressed one
+                    if compressed_pdf_path.exists() and compressed_pdf_path.stat().st_size > 0:
+                        temp_pdf_path.unlink()
+                        compressed_pdf_path.rename(temp_pdf_path)
+                        logger.info(f"Compressed PDF: {temp_pdf_path}")
+                except Exception as e:
+                    logger.warning(f"PDF compression failed: {e}")
+            # Only signal completion if PDF was created successfully               
+            if self.progress_callback and temp_pdf_path.exists() and temp_pdf_path.stat().st_size > 0:
+                self.progress_callback(100, 100)
                 
         except Exception as e:
-            print(f"Error during OCRProcessor cleanup: {e}")
+            logger.error(f"Error processing image {image_path}: {e}")
+            # Safe cleanup on error
+            if torch.cuda.is_available():
+                try:
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                except:
+                    pass
+        finally:
+            # Clean up resources safely
+            if temp_hocr and temp_hocr.exists():
+                try:
+                    os.chmod(str(temp_hocr), 0o666)
+                    temp_hocr.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp HOCR file {temp_hocr}: {e}")
+        
+            if intermediate_pdf and intermediate_pdf.exists():
+                try:
+                    os.chmod(str(intermediate_pdf), 0o666)
+                    intermediate_pdf.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup intermediate PDF {intermediate_pdf}: {e}")
+        
+            # Clean up temporary converted image if it was created
+            if temp_converted_image and temp_converted_image.exists() and temp_converted_image != image_path:
+                try:
+                    temp_converted_image.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp converted image {temp_converted_image}: {e}")
+                    
+            # Clean up compressed image if it was created
+            if processed_image_path != image_path and processed_image_path.exists() and processed_image_path != temp_converted_image:
+                try:
+                    processed_image_path.unlink()
+                except Exception:
+                    pass
+            # Safe GPU cleanup
+            if torch.cuda.is_available():
+                try:
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                except Exception as e:
+                    logger.warning(f"GPU cleanup warning: {e}")
+            gc.collect()
