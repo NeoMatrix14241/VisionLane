@@ -73,10 +73,12 @@ The following features and improvements are planned for future releases:
   _→ Below 6GB are crashing often based on my tests_
 - [ ] Integrate super-image (PyTorch) Library for image enhancement to standardize image sizes  
   _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
-- [ ] Fix OCRmyPDF related bugs causing no output when HOCR output is selected
+- [x] Fix OCRmyPDF related bugs causing no output when HOCR output is selected
   _→ OCRmyPDF causes "Division By Zero Error" resulting without any output at all_
 - [x] Fix RGBA issues on some image
   _→ RGB is the only channel supported by HOCR transform of OCRmyPDF_
+- [ ] Fix PyPDFCompressor (using GhostScript) don't properly compress PDF
+  _→ There is no difference in size_
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
