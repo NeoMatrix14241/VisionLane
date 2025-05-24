@@ -590,8 +590,23 @@ class OCRProcessor:
                 logger.error(f"Missing PDFs: found {len(temp_pdfs)}/{expected_count}")
 
             # Create output directories preserving folder structure
-            output_folder = self.pdf_dir / relative_path.parent
+            # Ensure relative_path is a Path object
+            if isinstance(relative_path, str):
+                relative_path = Path(relative_path)
+                
+            # Fix: For root-level folders, use the parent folder name instead of empty path
+            if str(relative_path) == '.':
+                if self.input_path:
+                    relative_path = Path(self.input_path.name)
+                    
+            # Create output folder for PDF with proper structure
+            output_folder = self.pdf_dir / relative_path
             output_folder.mkdir(parents=True, exist_ok=True)
+
+            # Create HOCR directory with same structure if needed
+            if "hocr" in self.output_formats:
+                hocr_folder = self.hocr_dir / relative_path
+                hocr_folder.mkdir(parents=True, exist_ok=True)
 
             # --- FIX: Handle PDF naming properly ---
             # If relative_path is a directory, use its name
@@ -609,13 +624,6 @@ class OCRProcessor:
                 
             logger.debug(f"Using PDF name: {pdf_name} for folder: {relative_path}")
             output_pdf = output_folder / pdf_name
-
-            # Create HOCR directory with same structure if needed
-            if "hocr" in self.output_formats:
-                hocr_folder = self.hocr_dir / relative_path
-                hocr_folder.parent.mkdir(parents=True, exist_ok=True)
-
-            logger.info(f"Output PDF path: {output_pdf}")
 
             # Merge PDFs
             merger = PdfMerger()
@@ -761,6 +769,30 @@ class OCRProcessor:
             # Track file
             self._processed_files.add(str(pdf_path))
             logger.debug(f"Added to processed files: {pdf_path.name}")
+
+            # Create relative path structure for the PDF
+            if self.input_path:
+                try:
+                    # Get relative path from input directory
+                    relative_path = pdf_path.parent.relative_to(self.input_path)
+                    
+                    # For root level files, use input_path's name as folder
+                    if str(relative_path) == '.':
+                        relative_path = Path(self.input_path.name)
+                except ValueError:
+                    # If not a subfolder of input path, use parent folder name
+                    relative_path = Path(pdf_path.parent.name)
+            else:
+                relative_path = Path(pdf_path.parent.name)
+                
+            # Create both PDF and HOCR output directories with consistent structure
+            pdf_output_folder = self.pdf_dir / relative_path
+            pdf_output_folder.mkdir(parents=True, exist_ok=True)
+            
+            # Also create HOCR directory with same structure if needed
+            if "hocr" in self.output_formats:
+                hocr_output_folder = self.hocr_dir / relative_path
+                hocr_output_folder.mkdir(parents=True, exist_ok=True)
 
             # Convert PDF to images
             logger.info("Converting PDF to images...")
@@ -1081,13 +1113,38 @@ class OCRProcessor:
                 
                     # If HOCR output is requested, save to final location
                     if "hocr" in self.output_formats:
-                        relative_path = image_path.parent.relative_to(self.input_path)
-                        hocr_output = self.hocr_dir / relative_path / f"{image_path.stem}.hocr"
-                        hocr_output.parent.mkdir(parents=True, exist_ok=True)
-                        # Copy content instead of moving to preserve for PDF creation if needed
-                        with open(hocr_output, "w", encoding="utf-8") as f:
-                            f.write(xml_outputs[0][0].decode())
-                        logger.info(f"Created HOCR output: {hocr_output}")
+                        try:
+                            # Fix: Calculate proper relative path from input_path
+                            if self.input_path:
+                                try:
+                                    # Get the relative path from input path
+                                    relative_path = image_path.parent.relative_to(self.input_path)
+                                    
+                                    # For root level files, use input_path's name as folder name
+                                    if str(relative_path) == '.':
+                                        relative_path = Path(self.input_path.name)
+                                except ValueError:
+                                    # If not a subfolder of input_path, use parent folder name
+                                    relative_path = Path(image_path.parent.name)
+                            else:
+                                relative_path = Path(image_path.parent.name)
+                                
+                            # Create the full path where the HOCR should be saved
+                            hocr_output = self.hocr_dir / relative_path / f"{image_path.stem}.hocr"
+                            hocr_output.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            # Copy content instead of moving to preserve for PDF creation if needed
+                            with open(hocr_output, "w", encoding="utf-8") as f:
+                                f.write(xml_outputs[0][0].decode())
+                                
+                            logger.info(f"Created HOCR output: {hocr_output}")
+                        except Exception as e:
+                            logger.error(f"Error saving HOCR with proper folder structure: {e}")
+                            # Fallback to simpler path if the above fails
+                            hocr_output = self.hocr_dir / f"{image_path.stem}.hocr"
+                            hocr_output.parent.mkdir(parents=True, exist_ok=True)
+                            with open(hocr_output, "w", encoding="utf-8") as f:
+                                f.write(xml_outputs[0][0].decode())
             except Exception as e:
                 logger.error(f"Failed to write HOCR file: {e}")
                 raise
