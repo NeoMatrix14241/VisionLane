@@ -1236,7 +1236,7 @@ class OCRProcessor:
                     pdf_files.append(path)
         logger.info(f"Found: {len(image_files)} images, {len(pdf_files)} pdf\n")
 
-        # Continue with existing processing
+        # Process images and PDFs as a single batch
         all_files = [('image', p) for p in image_files]
         all_files.extend(('pdf', p) for p in pdf_files)
         total_files = len(all_files)
@@ -1250,13 +1250,16 @@ class OCRProcessor:
         self.current_file = None
         completed = 0
         failed = 0
+        
         # Emit initial progress safely
         if callable(self.progress_callback):
             try:
+                # Important: Pass total_files as second parameter to properly initialize progress
                 if not self.progress_callback(0, total_files):
                     return {"status": "cancelled", "processed": 0, "total": total_files}
             except Exception as e:
                 logger.error(f"Progress callback error: {e}")
+                
         try:
             # Process files one at a time to prevent memory issues
             for file_type, file_path in all_files:
@@ -1266,24 +1269,32 @@ class OCRProcessor:
                 self.current_file = str(file_path)
                 cancelled = False
                 try:
+                    logger.debug(f"Processing {file_type} file: {file_path}")
                     if file_type == 'image':
                         result = self.process_image(file_path)
                         cancelled = result.get("status") == "cancelled"
                     else:
+                        # For PDFs, use a progress update before and after processing
+                        if callable(self.progress_callback):
+                            self.progress_callback(completed, total_files, 0)  # Start PDF processing
                         self.process_pdf(file_path)
                         
                     if not cancelled:
                         completed += 1
                         if callable(self.progress_callback):
-                            if not self.progress_callback(completed, total_files):
+                            # Update progress with proper counts
+                            if not self.progress_callback(completed, total_files, 100):
                                 break
+                            logger.debug(f"Progress update: {completed}/{total_files}")
                 except Exception as e:
                     failed += 1
                     logger.error(f"Error processing {file_path}: {e}")
                     continue
+                    
             # Clean up after batch
             gc.collect()
             torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            
         except Exception as e:
             logger.error(f"Batch processing error: {e}", exc_info=True)
             raise
@@ -1298,6 +1309,7 @@ class OCRProcessor:
         status = "cancelled" if self.is_cancelled else "success"
         if failed > 0:
             status = "partial"
+            
         return {
             "status": status,
             "processed": completed,

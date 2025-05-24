@@ -56,9 +56,6 @@ class PDFProcessor:
             
             self.log_with_timestamp(f"Processing file: {input_path}", thread_name=thread_name)
             
-            # Calculate compression settings
-            compression_level = max(0, min(9, int((100 - quality) / 11)))
-            
             # Create output directory if it doesn't exist
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
@@ -100,65 +97,146 @@ class PDFProcessor:
                     self.log_with_timestamp("Ghostscript not found! PDF compression will not run.", "error")
                     return False
 
-            # Prepare Ghostscript command with quoted paths
-            gs_call = [
+            # --- IMPROVED: Calculate optimal compression settings based on quality ---
+            # Map the quality (0-100) to optimal parameters for different aspects
+            compression_level = max(0, min(9, int((100 - quality) / 11)))  # 0-9 compression level
+            
+            # Set downsampling resolution based on quality
+            if quality <= 30:
+                resolution = 72  # Low quality - aggressive compression
+            elif quality <= 60:
+                resolution = 150  # Medium quality
+            elif quality <= 85:
+                resolution = 300  # High quality
+            else:
+                resolution = 600  # Very high quality - minimal compression
+            
+            # Adjust JPEG quality based on input quality
+            jpeg_quality = max(5, min(100, quality))  # Never go below 5% JPEG quality
+            
+            # --- IMPROVED: Set different parameters for each compression type ---
+            # Build GhostScript command with optimized parameters
+            gs_cmd = [
                 f'"{gs_path}"',
                 '-sDEVICE=pdfwrite',
-                '-dCompatibilityLevel=1.5',
+                '-dCompatibilityLevel=1.5',  # Use PDF 1.5 compatibility for better compression
+                '-dPDFSETTINGS=/default',    # Base settings
                 '-dNOPAUSE',
+                '-dQUIET',
                 '-dBATCH',
                 '-dSAFER',
-                '-dPrinted=false',
-                '-dPreserveAnnots=true',
-                '-dAutoRotatePages=/None',
-                '-dPreserveStructure=true',
+                '-dPrinted=false',           # Not for printing
                 f'-dCompressFonts=true',
                 f'-dCompressPages=true',
-                f'-dCompressLevel={compression_level}',
-                f'-dJPEGQ={quality}',
-                '-dColorImageDownsampleType=/Bicubic',
-                '-dGrayImageDownsampleType=/Bicubic',
-                '-dMonoImageDownsampleType=/Bicubic',
-                f'-dColorImageDepth={8 if quality < 50 else 16 if quality < 85 else 24}',
-                # --- Force recompression ---
-                '-dEncodeColorImages=true',
-                '-dEncodeGrayImages=true',
-                '-dDownsampleColorImages=true',
-                '-dDownsampleGrayImages=true',
+                f'-dCompressStreams=true',    # Force stream compression
+                f'-dAutoRotatePages=/None',   # Preserve orientation
+                f'-dPreserveStructure=true',  # Preserve document structure
+                f'-dCompatibilityLevel=1.5',  # PDF 1.5 compatibility
+                f'-dEmbedAllFonts=true',      # Keep all fonts
+                f'-dSubsetFonts=true',        # But subset them to reduce size
+                f'-dCompressLevel={compression_level}',  # Compression level for non-image objects
             ]
-
-            # --- Add compression type logic ---
+            
+            # --- IMPROVED: Set image sampling based on quality ---
+            # Color image settings
+            gs_cmd.extend([
+                f'-dColorImageDownsampleType=/Bicubic',
+                f'-dColorImageResolution={resolution}',
+                f'-dDownsampleColorImages=true',
+                f'-dColorImageDownsampleThreshold=1.0',  # Always downsample color images
+                f'-dEncodeColorImages=true',
+            ])
+            
+            # Grayscale image settings
+            gs_cmd.extend([
+                f'-dGrayImageDownsampleType=/Bicubic',
+                f'-dGrayImageResolution={resolution}',
+                f'-dDownsampleGrayImages=true',
+                f'-dGrayImageDownsampleThreshold=1.0',  # Always downsample grayscale images
+                f'-dEncodeGrayImages=true',
+            ])
+            
+            # Monochrome image settings
+            gs_cmd.extend([
+                f'-dMonoImageDownsampleType=/Bicubic',
+                f'-dMonoImageResolution={resolution}',
+                f'-dDownsampleMonoImages=true',
+                f'-dMonoImageDownsampleThreshold=1.0',  # Always downsample monochrome images
+            ])
+            
+            # --- IMPROVED: Handle specific compression type settings ---
             ctype = (compression_type or "jpeg").lower()
+            
             if ctype == "jpeg":
-                gs_call += [
-                    '-dColorImageFilter=/DCTEncode',
-                    '-dGrayImageFilter=/DCTEncode',
-                ]
+                gs_cmd.extend([
+                    f'-dAutoFilterColorImages=false',
+                    f'-dColorImageFilter=/DCTEncode',
+                    f'-dAutoFilterGrayImages=false',
+                    f'-dGrayImageFilter=/DCTEncode',
+                    f'-dJPEGQ={jpeg_quality}',
+                    # Color bit depth based on quality
+                    f'-dColorConversionStrategy=/LeaveColorUnchanged',
+                    f'-dColorImageDepth={8 if quality < 85 else 24}',
+                ])
             elif ctype == "jpeg2000":
-                gs_call += [
-                    '-dColorImageFilter=/JPXEncode',
-                    '-dGrayImageFilter=/JPXEncode',
-                ]
+                gs_cmd.extend([
+                    f'-dAutoFilterColorImages=false',
+                    f'-dColorImageFilter=/JPXEncode',
+                    f'-dAutoFilterGrayImages=false',
+                    f'-dGrayImageFilter=/JPXEncode',
+                    # Quality parameters specific to JPEG2000
+                    f'-dJPEGQ={jpeg_quality}',
+                    # Set color depth based on quality
+                    f'-dColorConversionStrategy=/LeaveColorUnchanged',
+                    f'-dColorImageDepth={8 if quality < 85 else 24}',
+                ])
             elif ctype == "lzw":
-                gs_call += [
-                    '-dColorImageFilter=/LZWEncode',
-                    '-dGrayImageFilter=/LZWEncode',
-                ]
-            elif ctype == "png":
-                gs_call += [
-                    '-dColorImageFilter=/FlateEncode',
-                    '-dGrayImageFilter=/FlateEncode',
-                ]
-            # else: default to JPEG
-
-            # Quote the file paths
-            gs_call.extend([
+                gs_cmd.extend([
+                    f'-dAutoFilterColorImages=false',
+                    f'-dColorImageFilter=/LZWEncode',
+                    f'-dAutoFilterGrayImages=false',
+                    f'-dGrayImageFilter=/LZWEncode',
+                    # LZW predictor to improve compression
+                    f'-dLZWPredictor=2',
+                    f'-dColorConversionStrategy=/LeaveColorUnchanged',
+                ])
+            elif ctype == "png" or ctype == "flate":
+                gs_cmd.extend([
+                    f'-dAutoFilterColorImages=false',
+                    f'-dColorImageFilter=/FlateEncode',
+                    f'-dAutoFilterGrayImages=false',
+                    f'-dGrayImageFilter=/FlateEncode',
+                    # Set flate predictor for better lossless compression
+                    f'-dFlatePrediction=2',
+                    f'-dColorConversionStrategy=/LeaveColorUnchanged',
+                ])
+            else:
+                # Default to JPEG
+                gs_cmd.extend([
+                    f'-dAutoFilterColorImages=false',
+                    f'-dColorImageFilter=/DCTEncode',
+                    f'-dAutoFilterGrayImages=false',
+                    f'-dGrayImageFilter=/DCTEncode',
+                    f'-dJPEGQ={jpeg_quality}',
+                ])
+            
+            # --- IMPROVED: Add PDFSETTINGS presets for better compression ---
+            # Override default settings with quality-based presets if quality is at extremes
+            if quality < 30:
+                # Low quality: aggressive compression
+                gs_cmd.append('-dPDFSETTINGS=/ebook')
+            elif quality > 90:
+                # Very high quality: minimal compression
+                gs_cmd.append('-dPDFSETTINGS=/prepress')
+                
+            # Quote the file paths and add to command
+            gs_cmd.extend([
                 f'-sOutputFile="{output_path}"',
                 f'"{input_path}"'
             ])
 
             # Execute compression
-            self.log_with_timestamp(f"Starting compression with command: {' '.join(gs_call)}", thread_name=thread_name)
+            self.log_with_timestamp(f"Starting compression with command: {' '.join(gs_cmd)}", thread_name=thread_name)
             run_kwargs = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -168,12 +246,13 @@ class PDFProcessor:
             if sys.platform.startswith("win"):
                 run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             process = subprocess.run(
-                ' '.join(gs_call),
+                ' '.join(gs_cmd),
                 **run_kwargs
             )
             # --- Print Ghostscript output for debugging ---
             self.log_with_timestamp(f"Ghostscript stdout: {process.stdout}", thread_name=thread_name)
-            self.log_with_timestamp(f"Ghostscript stderr: {process.stderr}", thread_name=thread_name)
+            if process.stderr:
+                self.log_with_timestamp(f"Ghostscript stderr: {process.stderr}", thread_name=thread_name)
 
             if process.returncode == 0 and os.path.exists(output_path):
                 initial_size = os.path.getsize(input_path) / (1024 * 1024)  # Convert to MB
@@ -201,6 +280,17 @@ class PDFProcessor:
                     f"- Processing time: {elapsed_time:.2f}s", 
                     thread_name=thread_name
                 )
+                
+                # If compression actually made the file larger, use the original
+                if final_size > initial_size:
+                    self.log_with_timestamp(
+                        f"Compression increased file size, reverting to original.", 
+                        thread_name=thread_name
+                    )
+                    os.remove(output_path)
+                    shutil.copy2(input_path, output_path)
+                    return True
+                    
                 return True
             else:
                 self.log_with_timestamp(

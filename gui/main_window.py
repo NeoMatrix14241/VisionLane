@@ -1528,11 +1528,13 @@ class MainWindow(QMainWindow):
                 files = []
                 for ext in image_exts:
                     files.extend(sorted(folder.rglob(f"*{ext}")))
+                # Add PDFs to the files list to process
                 pdfs = sorted(folder.rglob("*.pdf"))
                 self._files_to_process = files + pdfs
+                logger.info(f"Files to process: {len(self._files_to_process)} ({len(files)} images + {len(pdfs)} PDFs)")
             else:
                 self._files_to_process = [path]
-
+            
             # --- Archiving logic ---
             archive_enabled = False
             archive_dir = None
@@ -1572,7 +1574,7 @@ class MainWindow(QMainWindow):
             self.overall_progress_label.setText(f"Files Processed: 0/{self.total_files}")
             self.overall_progress.setValue(0)
             QApplication.processEvents()
-
+            
             if hasattr(self, 'ocr'):
                 self.ocr.reset_state()
                 self.ocr._processed_files.clear()
@@ -1742,8 +1744,11 @@ class MainWindow(QMainWindow):
             elif mode == 'pdf':
                 return 1
             elif mode == 'folder':
+                # Fix: Ensure we count both images and PDFs for total
                 counts = self._count_supported_files(str(path))
-                return counts['images'] + counts['pdfs']
+                total = counts['images'] + counts['pdfs']
+                logger.info(f"Total files to process: {total} ({counts['images']} images + {counts['pdfs']} PDFs)")
+                return total
             return 0
         except Exception as e:
             logger.error(f"Error counting files: {e}")
@@ -1788,9 +1793,12 @@ class MainWindow(QMainWindow):
                 else:
                     self.current_file_label.setText("Processing...")
 
-            # Update progress counts
+            # Update progress counts with proper total_files value
             self.processed_files = current_file
-            self.total_files = total_files if total_files > 0 else self.total_files
+            
+            # Ensure we use the correct total count
+            if total_files > 0:
+                self.total_files = total_files
             
             # Calculate and update progress
             if self.total_files > 0:
@@ -1799,6 +1807,7 @@ class MainWindow(QMainWindow):
                 self.overall_progress_label.setText(
                     f"Files Processed: {current_file}/{self.total_files}"
                 )
+                logger.debug(f"Progress updated: {current_file}/{self.total_files} ({progress}%)")
             
             # Force GUI update
             QApplication.processEvents()
@@ -1869,6 +1878,7 @@ class MainWindow(QMainWindow):
                 if device == "cuda" and torch.cuda.is_available():
                     self.device_label.setText("Processing Device: GPU")
                     
+
                     try:
                         # Try NVML first
                         if self.nvml_initialized:

@@ -157,12 +157,22 @@ class OCRWorker(QRunnable):
         self._batch_start_time = time.time()
         
         try:
-            # Get total files first
+            # Get total files first, making sure to count both images and PDFs
             if self.mode == 'folder':
-                files = []
-                for ext in ['.tif', '.tiff', '.jpg', '.jpeg', '.png']:
-                    files.extend(list(Path(self.path).rglob(f"*{ext}")))
-                self._total_files = len(files)
+                # Count both images and PDFs
+                image_files = []
+                pdf_files = []
+                
+                # Define supported image extensions
+                image_extensions = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
+                
+                # Count files in folder
+                for ext in image_extensions:
+                    image_files.extend(list(Path(self.path).rglob(f"*{ext}")))
+                pdf_files.extend(list(Path(self.path).rglob("*.pdf")))
+                
+                self._total_files = len(image_files) + len(pdf_files)
+                self.logger.debug(f"Total files to process: {self._total_files} ({len(image_files)} images + {len(pdf_files)} PDFs)")
             else:
                 self._total_files = 1
                 
@@ -177,7 +187,8 @@ class OCRWorker(QRunnable):
                 
                 # Update progress with actual processed count
                 processed = result.get('processed', 0)
-                self.signals.progress.emit(processed, self._total_files, 100)
+                total = result.get('total', self._total_files)  # Use total from result if available
+                self.signals.progress.emit(processed, total, 100)
             else:
                 # Single file processing
                 if self.mode == 'single':
