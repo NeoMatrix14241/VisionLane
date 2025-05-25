@@ -79,6 +79,8 @@ The following features and improvements are planned for future releases:
   _→ RGB is the only channel supported by HOCR transform of OCRmyPDF_
 - [ ] Fix PyPDFCompressor (using GhostScript) don't properly compress PDF
   _→ There is no difference in size_
+- [x] Enhanced threading with daemon threads
+  _→ Implement daemon threads for improved clean up during shutdown_
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
