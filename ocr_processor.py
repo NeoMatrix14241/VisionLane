@@ -1476,16 +1476,21 @@ class OCRProcessor:
                             
                             # Ensure parent directory exists
                             final_hocr_path.parent.mkdir(parents=True, exist_ok=True)
-                            
-                            # Copy HOCR to final location
+                              # Copy HOCR to final location
                             shutil.copy2(temp_hocr, final_hocr_path)
                             logger.info(f"Created HOCR output: {final_hocr_path}")
                             hocr_saved_to_output = True
                         else:
-                            # For regular images, use original logic but create a subfolder with same name as image
-                            image_basename = image_path.stem  # Get image name without extension
-                            hocr_output_subdir = self.hocr_dir / image_path.parent.name
-                            hocr_output_subdir = hocr_output_subdir / image_basename  # Add subfolder
+                            # For regular images, preserve folder structure without extra subfolders
+                            # Calculate relative path from input_path for proper folder structure
+                            try:
+                                relative_path = image_path.parent.relative_to(self.input_path)
+                            except ValueError:
+                                # Fallback if image is outside input_path
+                                relative_path = Path(image_path.parent.name)
+                            
+                            # Create HOCR output directory preserving folder structure
+                            hocr_output_subdir = self.hocr_dir / relative_path
                             hocr_output_subdir.mkdir(parents=True, exist_ok=True)
                             
                             final_hocr_path = hocr_output_subdir / f"{image_path.stem}.hocr"
