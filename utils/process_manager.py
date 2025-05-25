@@ -15,7 +15,11 @@ class ProcessManager:
         self._lock = threading.Lock()
         
     def track_thread(self, thread: threading.Thread):
-        """Track thread for cleanup"""
+        """Track thread for cleanup and ensure it's set as daemon"""
+        # Ensure thread is daemon to prevent hanging on exit
+        if not thread.daemon:
+            thread.daemon = True
+            
         with self._lock:
             self.threads.add(thread)
         

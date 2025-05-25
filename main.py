@@ -261,20 +261,38 @@ def main(app, splash):
         def cleanup_on_exit():
             if not app._cleanup_done:
                 try:
+                    logger.info("Application cleanup started")
                     if window:
-                        window.cleanup_and_exit()
+                        # Stop all processing and timers
+                        window._stop_all_timers()
+                        if hasattr(window, 'current_worker') and window.current_worker:
+                            window.current_worker.stop(force=True)
+                        
+                        # Clean up resources
+                        window._cleanup_resources()
                         window.close()
+                    
+                    # Kill any child processes
                     import psutil
                     current_process = psutil.Process()
                     children = current_process.children(recursive=True)
                     for child in children:
                         try:
                             child.terminate()
-                        except:
+                            child.wait(timeout=2)
+                        except (psutil.TimeoutExpired, psutil.NoSuchProcess):
+                            try:
+                                child.kill()
+                            except psutil.NoSuchProcess:
+                                pass
+                        except Exception:
                             pass
-                except:
-                    pass
-                app._cleanup_done = True
+                    
+                    logger.info("Application cleanup completed")
+                except Exception as e:
+                    print(f"Error during cleanup: {e}")
+                finally:
+                    app._cleanup_done = True
 
         app.aboutToQuit.connect(cleanup_on_exit)
         
@@ -312,9 +330,18 @@ if __name__ == '__main__':
         QTimer.singleShot(0, lambda: load_real_app(app, fast_splash))
         
         # Start the event loop just once
-        app.exec()
+        exit_code = app.exec()
+        
+        # Force exit with proper cleanup
+        try:
+            sys.exit(exit_code)
+        except SystemExit:
+            os._exit(exit_code)
         
     except Exception as e:
         print(f"Fatal error during startup: {e}")
         print(traceback.format_exc())
-        sys.exit(1)
+        try:
+            sys.exit(1)
+        except:
+            os._exit(1)

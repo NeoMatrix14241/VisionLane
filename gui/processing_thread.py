@@ -125,13 +125,15 @@ class OCRWorker(QRunnable):
         # Add multiprocessing queues
         self.image_queue = mp.Queue()
         self.result_queue = mp.Queue()
-        
-        # Create new image processor instance
+          # Create new image processor instance
         if hasattr(self, 'image_processor'):
             self.image_processor.stop()
+            if self.image_processor.is_alive():
+                self.image_processor.join(timeout=2)
             self.image_processor = None
         
         self.image_processor = ImageProcessor(self.image_queue, self.result_queue)
+        self.image_processor.daemon = True  # Set as daemon thread
         self.image_processor.start()
 
     def _signal_handler(self, signum, frame):
@@ -246,7 +248,7 @@ class OCRWorker(QRunnable):
                 shm.unlink()
             except:
                 pass
-
+                
     def stop(self, force=False):
         """Improved stop method with process cleanup"""
         if not self.is_running:
@@ -262,13 +264,14 @@ class OCRWorker(QRunnable):
                 self.ocr.cancel_processing()
                 self.ocr.cleanup_temp_files(force=True)  # Force cleanup temp files
             
-            # Stop image processor
+            # Stop image processor with proper join
             if hasattr(self, 'image_processor') and self.image_processor:
                 self.image_queue.put(None)  # Send shutdown signal
                 self.image_processor.stop()
-                self.image_processor.join(timeout=1)
                 if self.image_processor.is_alive():
-                    self.image_processor.terminate()
+                    self.image_processor.join(timeout=2)  # Wait for thread to finish
+                    if self.image_processor.is_alive():
+                        self.logger.warning("ImageProcessor thread didn't stop gracefully")
                 self.image_processor = None
                 
             # Signal cancellation
@@ -278,6 +281,8 @@ class OCRWorker(QRunnable):
                 
             # Clear queues last
             self._clear_queues()
+            
+            self.logger.info("Worker stop completed - temp files cleaned up")
             
         except Exception as e:
             self.logger.error(f"Error during worker stop: {e}")

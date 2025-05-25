@@ -370,12 +370,17 @@ class MainWindow(QMainWindow):
         self.activateWindow()  # Force window activation
 
     def closeEvent(self, event):
-        """Handle window close"""
+        """Handle window close with proper thread cleanup"""
         try:
             self._save_config()
+            
             # Cancel any ongoing processing first
             if self.current_worker and self.current_worker.is_running:
                 self._cancel_processing()
+                # Wait a bit for cancellation to complete
+                QApplication.processEvents()
+                import time
+                time.sleep(0.5)
             
             # Stop all timers first
             self._stop_all_timers()
@@ -383,12 +388,33 @@ class MainWindow(QMainWindow):
             # Clean up OCR and resources
             self._cleanup_resources()
             
+            # Wait for thread pool to finish
+            if hasattr(self, 'thread_pool'):
+                self.thread_pool.clear()
+                success = self.thread_pool.waitForDone(3000)  # Wait 3 seconds
+                if not success:
+                    logger.warning("Thread pool didn't finish cleanly within timeout")
+            
+            # Force cleanup processes and threads
+            if hasattr(self, 'process_manager'):
+                self.process_manager.force_exit()
+            
+            logger.info("Application cleanup completed successfully")
+            
             # Accept the close event
             event.accept()
             
         except Exception as e:
             logger.error(f"Error during close: {e}")
-            event.accept()
+            event.accept()  # Accept anyway to prevent hanging
+        finally:
+            # Force exit if normal cleanup fails
+            import os
+            import sys
+            try:
+                sys.exit(0)
+            except:
+                os._exit(0)
 
     def _stop_all_timers(self):
         """Stop all timers safely"""
@@ -403,21 +429,34 @@ class MainWindow(QMainWindow):
                     setattr(self, timer_name, None)
 
     def _cleanup_resources(self):
-        """Clean up resources safely"""
+        """Clean up resources safely with thread termination"""
         try:
             # Clean up OCR processor first if it exists
             if hasattr(self, 'ocr') and self.ocr:
                 try:
                     self.ocr.cleanup_temp_files(force=True)
+                    logger.info("OCR temp files cleaned up")
                 except Exception as e:
                     logger.error(f"Error cleaning OCR temp files: {e}")
                 self.ocr = None
                 
-            # Clean up thread pool
+            # Clean up current worker
+            if hasattr(self, 'current_worker') and self.current_worker:
+                try:
+                    self.current_worker.stop(force=True)
+                    self.current_worker = None
+                    logger.info("Current worker cleaned up")
+                except Exception as e:
+                    logger.error(f"Error cleaning current worker: {e}")
+                
+            # Clean up thread pool with timeout
             if hasattr(self, 'thread_pool'):
                 try:
                     self.thread_pool.clear()
-                    self.thread_pool.waitForDone(1000)
+                    success = self.thread_pool.waitForDone(2000)  # Wait 2 seconds
+                    if not success:
+                        logger.warning("Thread pool cleanup timeout")
+                    logger.info("Thread pool cleaned up")
                 except Exception as e:
                     logger.error(f"Error cleaning thread pool: {e}")
                 
@@ -425,6 +464,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'log_handler'):
                 try:
                     logger.removeHandler(self.log_handler)
+                    logger.info("Log handler removed")
                 except Exception as e:
                     logger.error(f"Error removing log handler: {e}")
                 
@@ -432,6 +472,7 @@ class MainWindow(QMainWindow):
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                logger.info("GPU cache cleared")
                 
         except Exception as e:
             logger.error(f"Error during resource cleanup: {e}")
@@ -1346,17 +1387,26 @@ class MainWindow(QMainWindow):
                 self.ocr.cancel_processing()
                 try:
                     # Clean temp directory
-                    for temp_file in self.temp_dir.glob('*'):
-                        try:
-                            temp_file.unlink()
-                        except:
-                            pass
+                    temp_files_cleaned = 0
+                    if hasattr(self, 'temp_dir') and self.temp_dir and self.temp_dir.exists():
+                        for temp_file in self.temp_dir.glob('*'):
+                            try:
+                                temp_file.unlink()
+                                temp_files_cleaned += 1
+                            except:
+                                pass
+                    logger.info(f"Cleaned up {temp_files_cleaned} temp files")
                 except Exception as e:
                     logger.error(f"Error cleaning temp files: {e}")
             
             # Clear thread pool
             if hasattr(self, 'thread_pool'):
                 self.thread_pool.clear()
+                success = self.thread_pool.waitForDone(2000)
+                if success:
+                    logger.info("Thread pool stopped successfully")
+                else:
+                    logger.warning("Thread pool stop timeout")
             
             # Reset state but preserve progress
             self.start_button.setEnabled(True)
@@ -1367,7 +1417,7 @@ class MainWindow(QMainWindow):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
-            logger.info("Processing cleanup completed")
+            logger.info("Processing cleanup completed successfully")
             
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
@@ -1383,7 +1433,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'progress_timer'):
                 self.progress_timer.stop()
             if hasattr(self, 'progress_monitor'):
-                self.progress_monitor.stop();
+                self.progress_monitor.stop()
             
             # Reset progress counters
             self.processed_files = 0
