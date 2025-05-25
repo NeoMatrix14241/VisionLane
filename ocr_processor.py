@@ -1590,27 +1590,44 @@ class OCRProcessor:
                         if attempt == max_retries - 1:
                             raise RuntimeError(f"Failed to create PDF after {max_retries} attempts: {e}")
                         time.sleep(0.2)  # Short delay before retry
-            
-            # --- NEW: Compress the PDF after creation ---
+              # --- NEW: Compress the PDF after creation ---
             if "pdf" in self.output_formats and hasattr(self, "compress_enabled") and self.compress_enabled:
                 try:
+                    logger.info(f"Compressing PDF: {temp_pdf_path}")
                     # Compress the temp PDF and overwrite it
                     compressed_pdf_path = temp_pdf_path.with_suffix(".compressed.pdf")
-                    compress_pdf(
+                    
+                    success = compress_pdf(
                         str(temp_pdf_path),
                         str(compressed_pdf_path),
                         quality=getattr(self, "compression_quality", 80),
                         fast_mode=True,
                         compression_type=getattr(self, "compression_type", "jpeg")
                     )
-                    # Replace the original temp PDF with the compressed one
-                    if compressed_pdf_path.exists() and compressed_pdf_path.stat().st_size > 0:
-                        shutil.copy2(compressed_pdf_path, temp_pdf_path)
-                        if compressed_pdf_path.exists():
-                            try:
-                                compressed_pdf_path.unlink()
-                            except:
-                                pass
+                    
+                    # Replace the original temp PDF with the compressed one if successful
+                    if success and compressed_pdf_path.exists() and compressed_pdf_path.stat().st_size > 0:
+                        original_size = temp_pdf_path.stat().st_size
+                        compressed_size = compressed_pdf_path.stat().st_size
+                        
+                        # Only replace if compression was beneficial or neutral
+                        if compressed_size <= original_size * 1.1:  # Allow up to 10% size increase
+                            shutil.copy2(compressed_pdf_path, temp_pdf_path)
+                            logger.info(f"PDF compressed: {original_size} -> {compressed_size} bytes")
+                        else:
+                            logger.info(f"Compression not beneficial: {original_size} -> {compressed_size} bytes, keeping original")
+                        
+                        # Clean up temporary compressed file
+                        try:
+                            compressed_pdf_path.unlink()
+                        except:
+                            pass
+                    else:
+                        logger.warning(f"PDF compression failed or produced empty file")
+                        
+                except Exception as e:
+                    logger.error(f"Error compressing PDF: {e}")
+                    # Continue processing even if compression fails
                 except Exception as e:
                     logger.warning(f"PDF compression failed: {e}")
                     

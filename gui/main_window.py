@@ -1554,10 +1554,9 @@ class MainWindow(QMainWindow):
             # --- Refresh folder label before processing ---
             if self.tab_widget.currentIndex() == 1:
                 self._refresh_folder_label()
-            
-            # --- Sync compression settings to OCRProcessor before processing ---
+              # --- Sync compression settings to OCRProcessor before processing ---
             if hasattr(self, 'ocr'):
-                self.ocr.compress_images = self.compress_checkbox.isChecked()
+                self.ocr.compress_enabled = self.compress_checkbox.isChecked()
                 self.ocr.compression_type = self.compression_type_combo.currentText().lower()
                 self.ocr.compression_quality = self.quality_slider.value()
 
@@ -2209,10 +2208,9 @@ class MainWindow(QMainWindow):
             rec_model = self._config_values.get("recognition_model") or "parseq"
             self.ocr = OCRProcessor(
                 detection_model=det_model,
-                recognition_model=rec_model
-            )
+                recognition_model=rec_model            )
             # Set compression defaults
-            self.ocr.compress_images = self.compress_checkbox.isChecked()
+            self.ocr.compress_enabled = self.compress_checkbox.isChecked()
             self.ocr.compression_type = self.compression_type_combo.currentText().lower()
             self.ocr.compression_quality = self.quality_slider.value()
             # Only setup logging ONCE here
