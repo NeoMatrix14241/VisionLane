@@ -70,14 +70,14 @@ The following features and improvements are planned for future releases:
 - [ ] Add an option to switch GPU and CPU  
   _→ GPU acceleration can be disabled and use CPU instead_
 - [ ] Add a function to check if the recommended 8GB VRAM is met, else suggest to switch to CPU  
-  _→ Below 6GB are crashing often based on my tests_
+  _→ Below 6GB are crashing often based on my tests when CUDA out of memory_
 - [ ] Integrate super-image (PyTorch) Library for image enhancement to standardize image sizes  
   _→ Use super-image and a formula (see paper_sizes_formula.xlsl) to automatically resize/enhance images so all output PDFs have consistent paper sizes (e.g., A4), ensuring uniform appearance in any PDF viewer._
 - [x] Fix OCRmyPDF related bugs causing no output when HOCR output is selected
   _→ OCRmyPDF causes "Division By Zero Error" resulting without any output at all_
 - [x] Fix RGBA issues on some image
   _→ RGB is the only channel supported by HOCR transform of OCRmyPDF_
-- [ ] Fix PyPDFCompressor (using GhostScript) don't properly compress PDF
+- [x] Fix PyPDFCompressor (using GhostScript) don't properly compress PDF
   _→ There is no difference in size_
 - [x] Enhanced threading with daemon threads
   _→ Implement daemon threads for improved clean up during shutdown_
