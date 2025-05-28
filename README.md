@@ -93,6 +93,8 @@ The following features and improvements are planned for future releases:
   _→ PDF files have incorrect output and folder structure after processing_
 - [x] Fix unsupported images, apparently only the TIFF files are getting processed
   _→ Will add various images supported in the future_
+- [ ] Enhanced PDF output pathing
+  _→ Will remove additional unecessary subfolder next to the PDF naming convention_
 
 ### 🎨 UI/UX Features
 - [x] Add dark mode toggle and various bug fixes  
