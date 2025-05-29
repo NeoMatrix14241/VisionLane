@@ -2,6 +2,14 @@
 
 import sys
 import os
+
+# CRITICAL: Import DocTR setup before any other imports that might use DocTR
+try:
+    import doctr_torch_setup
+    doctr_torch_setup.ensure_torch_available()
+except ImportError:
+    print("Warning: DocTR torch setup not found, continuing...")
+
 # Minimize imports at the top level to speed up initial loading
 from PyQt6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel, QVBoxLayout, QWidget
 from PyQt6.QtCore import QCoreApplication, QTimer, Qt, QSize

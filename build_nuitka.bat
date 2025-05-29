@@ -24,6 +24,14 @@ IF %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
+REM Check PyTorch installation
+echo Verifying PyTorch installation...
+.\.venv\Scripts\python.exe test_cuda.py
+
+IF %ERRORLEVEL% NEQ 0 (
+    echo Warning: PyTorch verification failed. Build may not include CUDA support.
+)
+
 REM Build with Nuitka
 echo Building application with Nuitka...
 .\.venv\Scripts\python.exe -m nuitka ^
@@ -35,14 +43,35 @@ echo Building application with Nuitka...
     --include-qt-plugins=platforms,imageformats ^
     --include-data-file=icon.ico=icon.ico ^
     --include-data-file=config.ini=config.ini ^
+    --include-data-file=doctr_torch_setup.py=doctr_torch_setup.py ^
     --include-package=doctr ^
     --include-package=doctr.models ^
     --include-package=doctr.io ^
     --include-package=doctr.utils ^
+    --include-package=doctr.datasets ^
+    --include-package=doctr.transforms ^
     --include-package=torch ^
+    --include-package=torch.nn ^
+    --include-package=torch.cuda ^
+    --include-package=torch.backends ^
+    --include-package=torch.backends.cudnn ^
+    --include-package=torch.jit ^
+    --include-package=torch.autograd ^
+    --include-package=torch.optim ^
+    --include-package=torch.utils ^
+    --include-package=torch.utils.data ^
+    --include-package=torch.distributed ^
+    --include-package=torch._C ^
     --include-package=torchvision ^
+    --include-package=torchvision.models ^
+    --include-package=torchvision.transforms ^
+    --include-package=torchvision.datasets ^
+    --include-package=torchvision.ops ^
+    --include-package=torchaudio ^
     --include-package=PIL ^
     --include-package=numpy ^
+    --include-package=cv2 ^
+    --include-package=scipy ^
     --include-package=psutil ^
     --include-package=pynvml ^
     --include-package=GPUtil ^
@@ -52,18 +81,31 @@ echo Building application with Nuitka...
     --include-package=ocrmypdf.api ^
     --include-package=pdf2image ^
     --include-package=PyQt6 ^
+    --include-package=wmi ^
+    --include-package=gui ^
     --include-package=gui.processing_thread ^
     --include-package=gui.log_handler ^
+    --include-package=gui.main_window ^
+    --include-package=gui.splash_screen ^
+    --include-package=utils ^
     --include-package=utils.image_processor ^
     --include-package=utils.pypdfcompressor ^
     --include-package=utils.debug_helper ^
+    --include-package=utils.process_manager ^
+    --include-package=utils.thread_killer ^
+    --include-package=utils.logging_config ^
+    --include-package=utils.safe_logger ^
+    --include-package=utils.hocr_to_pdf ^
     --include-package-data=doctr ^
     --include-package-data=torch ^
     --include-package-data=torchvision ^
+    --include-package-data=torchaudio ^
     --include-package-data=PIL ^
     --include-package-data=ocrmypdf ^
     --include-data-dir=.venv\Lib\site-packages\torch=torch ^
-    --output-dir=dist ^
+    --include-data-dir=.venv\Lib\site-packages\torchvision=torchvision ^
+    --include-data-dir=.venv\Lib\site-packages\torchaudio=torchaudio ^
+    --include-data-dir=.venv\Lib\site-packages\doctr=doctr ^    --output-dir=dist ^
     --windows-icon-from-ico=icon.ico ^
     main.py
 
@@ -73,5 +115,44 @@ IF %ERRORLEVEL% NEQ 0 (
     exit /b 1
 ) ELSE (
     echo Build complete!
+    
+    REM Copy additional libraries that might be missed
+    echo Performing post-build library copying...
+    
+    REM Copy PyTorch DLLs
+    if exist ".venv\Lib\site-packages\torch\lib" (
+        echo Copying PyTorch libraries...
+        xcopy ".venv\Lib\site-packages\torch\lib\*" "dist\main.dist\torch\lib\" /Y /E /I 2>nul
+    )
+    
+    REM Copy NVIDIA libraries
+    if exist ".venv\Lib\site-packages\nvidia" (
+        echo Copying NVIDIA libraries...
+        xcopy ".venv\Lib\site-packages\nvidia\*" "dist\main.dist\nvidia\" /Y /E /I 2>nul
+    )
+    
+    REM Copy CUDA libraries if found in system
+    for %%d in ("C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*") do (
+        if exist "%%d\bin\*.dll" (
+            echo Copying CUDA libraries from %%d...
+            xcopy "%%d\bin\cudart*.dll" "dist\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cublas*.dll" "dist\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\curand*.dll" "dist\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cusolver*.dll" "dist\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cusparse*.dll" "dist\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cufft*.dll" "dist\main.dist\" /Y 2>nul
+        )
+    )    
+    REM Copy DocTR models cache
+    set "doctr_cache=%USERPROFILE%\.cache\doctr"
+    if exist "%doctr_cache%" (
+        echo Copying DocTR model cache...
+        xcopy "%doctr_cache%\*" "dist\main.dist\.cache\doctr\" /Y /E /I 2>nul
+    )
+    
+    echo.
+    echo Build complete! Your application is ready in the dist folder.
+    echo Run main.exe from the dist\main.dist\ folder.
+    
     pause
 )
