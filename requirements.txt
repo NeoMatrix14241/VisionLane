@@ -33,7 +33,7 @@
 # Modules/Dependencies to run DocTR
 # ---------------------------------------------------------------------
 
-# Modules with PyTorch + CUDA 12.6 for GPU acceleration
+# Modules with PyTorch + CUDA 12.8 for GPU acceleration
 --extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.7.0+cu128
 torchvision==0.22.0+cu128
