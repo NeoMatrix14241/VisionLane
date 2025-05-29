@@ -40,6 +40,7 @@ torchvision==0.22.0+cu128
 torchaudio==2.7.0+cu128
 
 # Other Modules
+pandas==2.2.3
 PyQt6==6.9.0
 wmi==1.5.1
 python-doctr[torch]==0.11.0
