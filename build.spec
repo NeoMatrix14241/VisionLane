@@ -69,12 +69,20 @@ hiddenimports = [
     'tqdm',
     'colorama',
     'typing_extensions',
+    'threading',
+    'queue',
+    'concurrent.futures',
+    'configparser',
+    're',
+    'time',
+    'wmi',  # Windows Management Interface
     # --- Add your own modules ---
     'gui.main_window',
     'gui.splash_screen',
     'gui.processing_thread',
     'gui.log_handler',
     'ocr_processor',
+    'doctr_torch_setup',  # Add the DocTR setup module
     'utils.process_manager',
     'utils.thread_killer',
     'utils.logging_config',
@@ -82,6 +90,67 @@ hiddenimports = [
     'utils.image_processor',
     'utils.pypdfcompressor',
     'utils.debug_helper',
+    # --- Enhanced startup utilities ---
+    'utils.parallel_loader',
+    'utils.system_diagnostics',
+    'utils.startup_cache',
+    'utils.startup_config',
+    'utils.model_downloader',
+    # --- DocTR models submodules ---
+    'doctr.models.detection',
+    'doctr.models.recognition',
+    'doctr.models.predictor',
+    'doctr.models.factory',
+    'doctr.models.builder',
+    'doctr.models.utils',
+    'doctr.file_utils',
+    # --- Additional torch modules ---
+    'torch.nn.functional',
+    'torch.nn.modules',
+    'torch.utils.data',
+    'torch.utils.model_zoo',
+    'torch.hub',
+    'torch.jit',
+    'torch.onnx',
+    'torch._C',
+    'torch._utils',
+    # --- Additional torchvision modules ---
+    'torchvision.models.detection',
+    'torchvision.models.segmentation',
+    'torchvision.models.video',
+    'torchvision.utils',
+    'torchvision.io',
+    # --- PIL/Pillow additional modules ---
+    'PIL.Image',
+    'PIL.ImageDraw',
+    'PIL.ImageFont',
+    'PIL.ImageFilter',
+    'PIL.ImageEnhance',
+    'PIL.ImageOps',
+    'PIL.ImageChops',
+    'PIL.ExifTags',
+    # --- OCRmyPDF additional modules ---
+    'ocrmypdf.helpers.files',
+    'ocrmypdf.helpers.logging',
+    'ocrmypdf.hocrtransform',
+    'ocrmypdf.pdfinfo',
+    'ocrmypdf.optimize',
+    'ocrmypdf.pdfa',
+    'ocrmypdf.subprocess',
+    # --- System and network modules ---
+    'urllib.request',
+    'urllib.parse',
+    'urllib.error',
+    'ssl',
+    'certifi',
+    'requests',
+    'json',
+    'pathlib',
+    'tempfile',
+    'shutil',
+    'glob',
+    'zipfile',
+    'gzip',
 ]
 
 # Add package submodules PyInstaller may miss 
@@ -214,6 +283,80 @@ if os.path.exists('icon.ico'):
 for docfile in ['README.md', 'LICENSE']:
     if os.path.exists(docfile):
         datas.append((docfile, '.'))
+
+# Add doctr_torch_setup.py as a data file
+if os.path.exists('doctr_torch_setup.py'):
+    datas.append(('doctr_torch_setup.py', '.'))
+
+# Add the utils directory as a whole to ensure all modules are included
+if os.path.exists('utils'):
+    datas.append(('utils', 'utils'))
+
+# Add the gui directory as a whole
+if os.path.exists('gui'):
+    datas.append(('gui', 'gui'))
+
+# Add verify_models.py if present (for model verification)
+if os.path.exists('verify_models.py'):
+    datas.append(('verify_models.py', '.'))
+
+# Add test_cuda.py if present (for CUDA testing)
+if os.path.exists('test_cuda.py'):
+    datas.append(('test_cuda.py', '.'))
+
+# Add any additional Python files that might be needed
+for py_file in ['doctr_torch_setup.py', 'verify_models.py', 'test_cuda.py']:
+    if os.path.exists(py_file):
+        datas.append((py_file, '.'))
+
+# Ensure all torch libraries are included
+try:
+    import torch
+    torch_path = os.path.dirname(torch.__file__)
+    # Include torch share data if it exists
+    torch_share = os.path.join(torch_path, 'share')
+    if os.path.exists(torch_share):
+        datas.append((torch_share, 'torch/share'))
+        
+    # Include torch lib directory
+    torch_lib = os.path.join(torch_path, 'lib')
+    if os.path.exists(torch_lib):
+        datas.append((torch_lib, 'torch/lib'))
+        
+    # Include torch bin directory if it exists (Windows)
+    torch_bin = os.path.join(torch_path, 'bin')
+    if os.path.exists(torch_bin):
+        datas.append((torch_bin, 'torch/bin'))
+        
+except ImportError:
+    print("Warning: PyTorch not found!")
+
+# Include NVIDIA libraries if available
+try:
+    import nvidia
+    nvidia_path = os.path.dirname(nvidia.__file__)
+    datas.append((nvidia_path, 'nvidia'))
+except ImportError:
+    pass
+
+# Include any CUDA runtime libraries found in the environment
+cuda_paths = [
+    'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/bin',
+    'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0/bin',
+    'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.1/bin',
+    'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.2/bin',
+    'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.3/bin',
+    'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin',
+]
+
+for cuda_path in cuda_paths:
+    if os.path.exists(cuda_path):
+        # Add essential CUDA DLLs
+        for dll_pattern in ['cudart*.dll', 'cublas*.dll', 'curand*.dll', 'cusolver*.dll', 'cusparse*.dll', 'cufft*.dll', 'cudnn*.dll']:
+            import glob
+            for dll in glob.glob(os.path.join(cuda_path, dll_pattern)):
+                datas.append((dll, '.'))
+        break  # Only use the first found CUDA installation
 
 # Add environment variables to help torch find its libraries
 os.environ['PYTHONIOENCODING'] = 'utf-8'

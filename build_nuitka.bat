@@ -11,8 +11,7 @@ REM If you remove them, your app will not run after building.
 
 REM Clean old build artifacts
 echo Cleaning up old build...
-rmdir /s /q "%~dp0build" 2>nul
-rmdir /s /q "%~dp0dist" 2>nul
+rmdir /s /q "%~dp0dist_nuitka" 2>nul
 
 REM Ensure models are downloaded first
 echo Downloading DocTR models if not present...
@@ -105,8 +104,10 @@ echo Building application with Nuitka...
     --include-data-dir=.venv\Lib\site-packages\torch=torch ^
     --include-data-dir=.venv\Lib\site-packages\torchvision=torchvision ^
     --include-data-dir=.venv\Lib\site-packages\torchaudio=torchaudio ^
-    --include-data-dir=.venv\Lib\site-packages\doctr=doctr ^    --output-dir=dist ^
+    --include-data-dir=.venv\Lib\site-packages\doctr=doctr ^
+    --output-dir=dist_nuitka ^
     --windows-icon-from-ico=icon.ico ^
+    --windows-console-mode=force ^
     main.py
 
 IF %ERRORLEVEL% NEQ 0 (
