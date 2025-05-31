@@ -165,7 +165,7 @@ class StartupConfig:
                     if section_name == 'Startup':
                         # Add warning comment before Startup section
                         f.write('\n# ============================================================================\n')
-                        f.write('# EXPERIMENTAL STARTUP CONFIGURATION - PLEASE DO NOT EDIT\n')
+                        f.write('# EXPERIMENTAL STARTUP CONFIGURATION - PLEASE EDIT CAREFULLY\n')
                         f.write('# These settings control advanced startup behavior and parallel loading.\n')
                         f.write('# Modifying these values may cause application instability or startup failures.\n')
                         f.write('# Only change these settings if you understand the technical implications.\n')
