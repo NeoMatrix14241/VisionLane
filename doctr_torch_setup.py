@@ -178,7 +178,8 @@ class DoctrImportHook:
                 module.requires_package = requires_package
         
         return module
-      def _patch_file_utils(self):
+
+    def _patch_file_utils(self):
         """Patch DocTR file_utils functions"""
         try:
             if 'doctr.file_utils' in sys.modules:
