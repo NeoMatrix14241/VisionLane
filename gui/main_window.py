@@ -318,50 +318,97 @@ class MainWindow(QMainWindow):
         # ...existing code...
 
     def _save_config(self):
-        """Save all GUI settings to config.ini"""
-        if not self.config.has_section("General"):
-            self.config.add_section("General")
-        if not self.config.has_section("Paths"):
-            self.config.add_section("Paths")
-        if not self.config.has_section("Performance"):
-            self.config.add_section("Performance")
-        # General
-        self.config.set("General", "dpi", self.dpi_combo.currentText())
-        self.config.set("General", "output_format", self.format_combo.currentText())
-        self.config.set("General", "theme_mode", self.theme_mode)
-        self.config.set("General", "detection_model", self.det_model_combo.currentData())
-        self.config.set("General", "recognition_model", self.rec_model_combo.currentData())
-        # Compression settings
-        self.config.set("General", "compress_enabled", str(self.compress_checkbox.isChecked()))
-        self.config.set("General", "compression_type", self.compression_type_combo.currentText().lower())
-        self.config.set("General", "compression_quality", str(self.quality_slider.value()))
-        # --- Archiving settings ---
-        self.config.set("General", "archive_enabled", str(
+        """Save all GUI settings to config.ini with proper section ordering"""
+        # Create ordered config to ensure proper section sequence
+        ordered_config = configparser.ConfigParser()
+        
+        # Add sections in the desired order: General, Paths, Performance, Startup
+        
+        # 1. General section
+        ordered_config.add_section("General")
+        ordered_config.set("General", "dpi", self.dpi_combo.currentText())
+        ordered_config.set("General", "output_format", self.format_combo.currentText())
+        ordered_config.set("General", "theme_mode", self.theme_mode)
+        ordered_config.set("General", "detection_model", self.det_model_combo.currentData())
+        ordered_config.set("General", "recognition_model", self.rec_model_combo.currentData())
+        ordered_config.set("General", "compress_enabled", str(self.compress_checkbox.isChecked()))
+        ordered_config.set("General", "compression_type", self.compression_type_combo.currentText().lower())
+        ordered_config.set("General", "compression_quality", str(self.quality_slider.value()))
+        ordered_config.set("General", "archive_enabled", str(
             self.single_archive_checkbox.isChecked() or
             self.folder_archive_checkbox.isChecked() or
             self.pdf_archive_checkbox.isChecked()
         ))
-        self.config.set("Paths", "archive_single", self.single_archive_dir.text())
-        self.config.set("Paths", "archive_folder", self.folder_archive_dir.text())
-        self.config.set("Paths", "archive_pdf", self.pdf_archive_dir.text())
-        # Paths
-        self.config.set("Paths", "single", str(self.selected_paths['single'] or ""))
-        self.config.set("Paths", "folder", str(self.selected_paths['folder'] or ""))
-        self.config.set("Paths", "pdf", str(self.selected_paths['pdf'] or ""))
-        self.config.set("Paths", "output_single", self.single_output_path.text())
-        self.config.set("Paths", "output_folder", self.folder_output_path.text())
-        self.config.set("Paths", "output_pdf", self.pdf_output_path.text())
-        # Performance
-        self.config.set("Performance", "thread_count", str(self.thread_pool.maxThreadCount()))
+        
+        # 2. Paths section
+        ordered_config.add_section("Paths")
+        ordered_config.set("Paths", "archive_single", self.single_archive_dir.text())
+        ordered_config.set("Paths", "archive_folder", self.folder_archive_dir.text())
+        ordered_config.set("Paths", "archive_pdf", self.pdf_archive_dir.text())
+        ordered_config.set("Paths", "single", str(self.selected_paths['single'] or ""))
+        ordered_config.set("Paths", "folder", str(self.selected_paths['folder'] or ""))
+        ordered_config.set("Paths", "pdf", str(self.selected_paths['pdf'] or ""))
+        ordered_config.set("Paths", "output_single", self.single_output_path.text())
+        ordered_config.set("Paths", "output_folder", self.folder_output_path.text())
+        ordered_config.set("Paths", "output_pdf", self.pdf_output_path.text())
+        
+        # 3. Performance section
+        ordered_config.add_section("Performance")
+        ordered_config.set("Performance", "thread_count", str(self.thread_pool.maxThreadCount()))
         if hasattr(self, "ocr"):
-            self.config.set("Performance", "operation_timeout", str(getattr(self.ocr, "operation_timeout", 600)))
-            self.config.set("Performance", "chunk_timeout", str(getattr(self.ocr, "chunk_timeout", 60)))
+            ordered_config.set("Performance", "operation_timeout", str(getattr(self.ocr, "operation_timeout", 600)))
+            ordered_config.set("Performance", "chunk_timeout", str(getattr(self.ocr, "chunk_timeout", 60)))
         else:
-            self.config.set("Performance", "operation_timeout", "600")
-            self.config.set("Performance", "chunk_timeout", "60")
-        # Write to file
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            self.config.write(f)
+            ordered_config.set("Performance", "operation_timeout", "600")
+            ordered_config.set("Performance", "chunk_timeout", "60")
+        
+        # 4. Startup section (preserve existing values or use defaults)
+        ordered_config.add_section("Startup")
+        startup_defaults = {
+            'enable_parallel_loading': 'True',
+            'show_detailed_progress': 'True', 
+            'cache_validation_results': 'True',
+            'skip_doctr_setup_check': 'False',
+            'skip_model_validation': 'False',
+            'auto_download_models': 'True',
+            'use_minimal_diagnostics': 'False',
+            'startup_timeout': '120',
+            'max_parallel_workers': str(psutil.cpu_count(logical=True) or 4),
+            'cache_expiry_hours': '24',
+            'skip_system_diagnostics': 'False'
+        }
+        
+        # Preserve existing startup values if they exist
+        if self.config.has_section('Startup'):
+            for key, default_value in startup_defaults.items():
+                existing_value = self.config.get('Startup', key, fallback=default_value)
+                ordered_config.set('Startup', key, existing_value)
+        else:
+            for key, value in startup_defaults.items():
+                ordered_config.set('Startup', key, value)
+        
+        # Write to file with custom formatting to add warning comments
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                for section_name in ordered_config.sections():
+                    if section_name == 'Startup':
+                        # Add warning comment before Startup section
+                        f.write('\n# ============================================================================\n')
+                        f.write('# EXPERIMENTAL STARTUP CONFIGURATION - PLEASE DO NOT EDIT\n')
+                        f.write('# These settings control advanced startup behavior and parallel loading.\n')
+                        f.write('# Modifying these values may cause application instability or startup failures.\n')
+                        f.write('# Only change these settings if you understand the technical implications.\n')
+                        f.write('# ============================================================================\n')
+                    
+                    f.write(f'[{section_name}]\n')
+                    
+                    for key, value in ordered_config.items(section_name):
+                        f.write(f'{key} = {value}\n')
+                    
+                    f.write('\n')  # Add blank line after each section
+                    
+        except Exception as e:
+            logger.error(f"Failed to save config: {e}")
 
     def show(self):
         """Override show to ensure window appears"""
@@ -1433,7 +1480,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'progress_timer'):
                 self.progress_timer.stop()
             if hasattr(self, 'progress_monitor'):
-                self.progress_monitor.stop()
+                self.progress_monitor.stop();
             
             # Reset progress counters
             self.processed_files = 0

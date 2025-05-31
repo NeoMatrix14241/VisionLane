@@ -82,34 +82,45 @@ class SplashScreen(QSplashScreen):
         # Update layout and process events
         layout.activate()
         self.content.updateGeometry()
-        QCoreApplication.processEvents()
-
-        # Prevent splash from closing automatically by keeping a reference
+        QCoreApplication.processEvents()        # Prevent splash from closing automatically by keeping a reference
         self._keep_alive = True
+        self._window_ready = False
 
-    def update_status(self, message: str, progress: int):
+    def update_status(self, message: str, progress: int = None):
         """Update status message and progress bar"""
         self.status_label.setText(message)
-        self.progress.setValue(progress)
+        if progress is not None:
+            self.progress.setValue(progress)
         self.content.updateGeometry()
         self.repaint()
         QCoreApplication.processEvents()
 
+    def set_window_ready(self):
+        """Mark that the main window is ready"""
+        self._window_ready = True
+
     def finish(self, window):
         """Smoothly transition to main window"""
-        # Keep splash visible for a moment while main window loads
+        # Ensure main window is fully ready
+        if hasattr(window, 'show'):
+            window.show()
+            window.activateWindow()
+            window.raise_()
+            QCoreApplication.processEvents()
+        
+        # Keep splash visible for smooth transition
         self.raise_()
         self.activateWindow()
         QCoreApplication.processEvents()
         
-        # Short delay for visual transition
-        time.sleep(0.1)
+        # Longer delay for visual transition
+        time.sleep(0.3)
         self._keep_alive = False  # Allow splash to close
         super().finish(window)
 
     def closeEvent(self, event):
-        # Prevent closing if _keep_alive is True
-        if getattr(self, "_keep_alive", False):
+        # Prevent closing if _keep_alive is True or window not ready
+        if getattr(self, "_keep_alive", False) or not getattr(self, "_window_ready", False):
             event.ignore()
         else:
             super().closeEvent(event)

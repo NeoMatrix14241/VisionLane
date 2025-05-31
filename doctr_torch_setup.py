@@ -197,6 +197,180 @@ def ensure_torch_available():
         print(f"DocTR Setup: PyTorch verification failed: {e}")
         return False
 
+def setup_doctr_with_progress(progress_callback=None, use_cache=True, detailed_progress=True):
+    """Setup DocTR with progress callback for splash screen integration"""
+    from utils.startup_cache import startup_cache
+    
+    # Check cache first if enabled
+    if use_cache:
+        cached_result = startup_cache.get_cached_doctr_setup()
+        if cached_result and cached_result.get('success'):
+            if progress_callback:
+                pytorch_ver = cached_result.get('pytorch_version', 'Unknown')
+                gpu_info = cached_result.get('gpu_info')
+                if gpu_info:
+                    progress_callback(f"✓ DocTR ready (cached): PyTorch {pytorch_ver}, GPU: {gpu_info}")
+                else:
+                    progress_callback(f"✓ DocTR ready (cached): PyTorch {pytorch_ver}")
+            return True
+    
+    if progress_callback:
+        progress_callback("Initializing PyTorch backend...")
+    
+    try:
+        # Check PyTorch availability
+        if progress_callback and detailed_progress:
+            progress_callback("Checking PyTorch installation...")
+        
+        global _TORCH_AVAILABLE
+        pytorch_version = None
+        gpu_info = None
+        
+        if not _TORCH_AVAILABLE:
+            try:
+                import torch
+                _TORCH_AVAILABLE = True
+                pytorch_version = torch.__version__
+                
+                if progress_callback:
+                    if detailed_progress:
+                        progress_callback(f"Found PyTorch {pytorch_version}")
+                    else:
+                        progress_callback("PyTorch detected")
+                    
+                # Check CUDA availability
+                if torch.cuda.is_available():
+                    gpu_count = torch.cuda.device_count()
+                    gpu_name = torch.cuda.get_device_name(0) if gpu_count > 0 else "Unknown"
+                    gpu_info = f"{gpu_name} ({gpu_count} GPU{'s' if gpu_count > 1 else ''})"
+                    
+                    if progress_callback:
+                        if detailed_progress:
+                            progress_callback(f"GPU detected: {gpu_info}")
+                        else:
+                            progress_callback("GPU available")
+                else:
+                    if progress_callback:
+                        progress_callback("Using CPU mode")
+            except ImportError:
+                if progress_callback:
+                    progress_callback("PyTorch not available!")
+                if use_cache:
+                    startup_cache.cache_doctr_setup(False)
+                return False        
+        # Setup DocTR
+        if progress_callback:
+            if detailed_progress:
+                progress_callback("Importing DocTR library...")
+            else:
+                progress_callback("Loading DocTR...")
+        
+        # Import DocTR directly
+        import doctr
+        
+        # Verify backend detection
+        if progress_callback and detailed_progress:
+            progress_callback("Configuring backend detection...")
+        
+        try:
+            from doctr.file_utils import is_torch_available, is_tf_available
+            torch_detected = is_torch_available()
+            tf_detected = is_tf_available()
+            
+            if not torch_detected:
+                # Try to patch the detection
+                doctr.file_utils._TORCH_AVAILABLE = _TORCH_AVAILABLE
+                doctr.file_utils._TF_AVAILABLE = False
+                if progress_callback and detailed_progress:
+                    progress_callback("Applied backend patches")
+            else:
+                if progress_callback and detailed_progress:
+                    progress_callback("Backend detection successful")
+        except Exception as e:
+            if progress_callback:
+                if detailed_progress:
+                    progress_callback(f"Backend warning: {str(e)[:25]}...")
+                else:
+                    progress_callback("Backend configuration warning")
+        
+        # Test importing commonly used DocTR modules
+        if progress_callback:
+            if detailed_progress:
+                progress_callback("Loading core modules...")
+            else:
+                progress_callback("Loading modules...")
+        
+        test_imports = [
+            ('doctr.models', 'AI models'),
+            ('doctr.utils', 'utilities'),
+            ('doctr.io', 'document processing'),
+            ('doctr.transforms', 'image transforms')
+        ]
+        
+        for module_name, display_name in test_imports:
+            try:
+                __import__(module_name)
+                if progress_callback and detailed_progress:
+                    progress_callback(f"Loaded {display_name}")
+            except Exception as e:
+                if progress_callback and detailed_progress:
+                    progress_callback(f"Warning: {display_name} issue")
+        
+        # Test OCR predictor
+        if progress_callback:
+            if detailed_progress:
+                progress_callback("Testing OCR predictor...")
+            else:
+                progress_callback("Finalizing setup...")
+        
+        try:
+            from doctr.models import ocr_predictor
+            if progress_callback:
+                if detailed_progress:
+                    progress_callback("OCR predictor ready")
+        except Exception as e:
+            if progress_callback:
+                if detailed_progress:
+                    progress_callback("OCR predictor warning")
+        
+        # Cache the results if successful
+        if use_cache:
+            try:
+                startup_cache.cache_doctr_setup(
+                    success=True, 
+                    pytorch_version=pytorch_version, 
+                    gpu_info=gpu_info
+                )
+            except Exception:
+                pass  # Don't fail setup if caching fails
+        
+        # Final verification
+        if progress_callback:
+            if detailed_progress:
+                progress_callback("DocTR ready for use")
+            else:
+                progress_callback("Setup complete")
+        
+        return True
+        
+    except Exception as e:
+        if progress_callback:
+            if detailed_progress:
+                progress_callback(f"Setup error: {str(e)[:30]}...")
+            else:
+                progress_callback("Setup failed")
+        
+        print(f"DocTR Setup: Failed to setup DocTR: {e}")
+        
+        # Cache the failure if enabled
+        if use_cache:
+            try:
+                startup_cache.cache_doctr_setup(success=False)
+            except Exception:
+                pass
+        
+        return create_fallback_mocks()
+
 # Execute setup immediately when module is imported
 print("DocTR Setup: Setting up DocTR with PyTorch...")
 setup_success = setup_doctr_with_pytorch()

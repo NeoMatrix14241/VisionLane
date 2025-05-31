@@ -3,7 +3,8 @@ from pathlib import Path
 from datetime import datetime
 import os
 
-def setup_logging(base_dir: Path):
+def setup_logging(base_dir: Path, startup_config=None):
+    """Setup logging with optional startup configuration"""
     try:
         # Create logs directory
         logs_dir = base_dir / "logs"
@@ -27,9 +28,13 @@ def setup_logging(base_dir: Path):
         file_handler.setFormatter(formatter)
         console_handler.setFormatter(formatter)
 
-        # Set levels
-        file_handler.setLevel(logging.DEBUG)
-        console_handler.setLevel(logging.INFO)
+        # Set levels based on startup config
+        if startup_config and startup_config.should_show_detailed_progress():
+            file_handler.setLevel(logging.DEBUG)
+            console_handler.setLevel(logging.INFO)
+        else:
+            file_handler.setLevel(logging.INFO)
+            console_handler.setLevel(logging.WARNING)
 
         # Get root logger and remove existing handlers
         logger = logging.getLogger()
@@ -43,6 +48,14 @@ def setup_logging(base_dir: Path):
         # Add handlers
         logger.addHandler(file_handler)
         logger.addHandler(console_handler)
+
+        # Log startup configuration status
+        if startup_config:
+            logger.info("=== VisionLane OCR Startup ===")
+            logger.info(f"Configuration loaded from: {startup_config.config_path}")
+            logger.info(f"Parallel loading: {'enabled' if startup_config.should_use_parallel_loading() else 'disabled'}")
+            logger.info(f"Detailed progress: {'enabled' if startup_config.should_show_detailed_progress() else 'disabled'}")
+            logger.info("==============================")
 
         return logger
         
