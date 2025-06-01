@@ -37,6 +37,7 @@ echo Building application with Nuitka...
     --standalone ^
     --nofollow-import-to=onnx ^
     --nofollow-imports ^
+    --follow-import-to=doctr ^
     --enable-plugin=pylint-warnings ^
     --enable-plugin=numpy ^
     --enable-plugin=torch ^
@@ -57,6 +58,7 @@ echo Building application with Nuitka...
     --include-package=doctr.datasets ^
     --include-package=doctr.transforms ^
     --include-package=doctr.file_utils ^
+    --include-package=doctr._backend ^
     --include-package=torch ^
     --include-package=torch.nn ^
     --include-package=torch.cuda ^
@@ -114,12 +116,17 @@ echo Building application with Nuitka...
     --include-package-data=torchaudio ^
     --include-package-data=PIL ^
     --include-package-data=ocrmypdf ^
+    --include-package=torch._C._nn ^
+    --include-package=torch._C._fft ^
+    --include-package=torch._C._linalg ^
+    --include-package=torch._C._sparse ^
     --include-data-dir=.venv\Lib\site-packages\torch=torch ^
     --include-data-dir=.venv\Lib\site-packages\torchvision=torchvision ^
     --include-data-dir=.venv\Lib\site-packages\torchaudio=torchaudio ^
     --include-data-dir=.venv\Lib\site-packages\doctr=doctr ^
     --include-data-dir=.venv\Lib\site-packages\torch\lib=torch\lib ^
     --include-data-dir=.venv\Lib\site-packages\torchvision\datasets=torchvision\datasets ^
+    --include-data-file=doctr_torch_setup.py=doctr_torch_setup.py ^
     --output-dir=dist_nuitka ^
     --windows-icon-from-ico=icon.ico ^
     --windows-console-mode=force ^
