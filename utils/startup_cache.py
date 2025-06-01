@@ -101,7 +101,10 @@ class StartupCache:
     
     def cache_doctr_setup(self, success: bool, pytorch_version: str = None, 
                          gpu_info: str = None, **kwargs):
-        """Cache DocTR setup results"""
+        """Cache DocTR setup results with enhanced logging"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         data = {
             'success': success,
             'timestamp': time.time(),
@@ -109,7 +112,13 @@ class StartupCache:
             'gpu_info': gpu_info,
             **kwargs
         }
-        self._save_cache(self.doctr_cache_file, data)
+        
+        if self._save_cache(self.doctr_cache_file, data):
+            logger.info(f"DocTR setup results cached: success={success}, pytorch={pytorch_version}")
+            if gpu_info:
+                logger.info(f"GPU info cached: {gpu_info}")
+        else:
+            logger.warning("Failed to cache DocTR setup results")
     
     # Models Cache Methods
     def get_cached_models_status(self) -> Optional[Dict[str, Any]]:
@@ -119,12 +128,21 @@ class StartupCache:
         return self._load_cache(self.models_cache_file)
     
     def cache_models_status(self, models_info: Dict[str, Any]):
-        """Cache models status"""
+        """Cache models status with logging"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         data = {
             'timestamp': time.time(),
             **models_info
         }
-        self._save_cache(self.models_cache_file, data)
+        
+        if self._save_cache(self.models_cache_file, data):
+            model_count = sum(1 for v in models_info.values() if v)
+            total_models = len(models_info)
+            logger.info(f"Models status cached: {model_count}/{total_models} models available")
+        else:
+            logger.warning("Failed to cache models status")
     
     # System Info Cache Methods
     def get_cached_system_info(self) -> Optional[Dict[str, Any]]:
@@ -142,7 +160,10 @@ class StartupCache:
         self._save_cache(self.system_cache_file, data)
     
     def clear_cache(self, cache_type: str = None):
-        """Clear cache files"""
+        """Clear cache files with enhanced logging"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         cache_files = {
             'doctr': self.doctr_cache_file,
             'models': self.models_cache_file,
@@ -154,17 +175,21 @@ class StartupCache:
             if cache_type in cache_files:
                 try:
                     cache_files[cache_type].unlink(missing_ok=True)
-                    logger.info(f"Cleared {cache_type} cache")
+                    logger.info(f"Cleared {cache_type} cache successfully")
                 except Exception as e:
                     logger.warning(f"Failed to clear {cache_type} cache: {e}")
         else:
             # Clear all caches
+            cleared_count = 0
             for name, file_path in cache_files.items():
                 try:
                     file_path.unlink(missing_ok=True)
+                    cleared_count += 1
                     logger.info(f"Cleared {name} cache")
                 except Exception as e:
                     logger.warning(f"Failed to clear {name} cache: {e}")
+            
+            logger.info(f"Cache cleanup complete: {cleared_count}/{len(cache_files)} caches cleared")
 
 # Global cache instance
 startup_cache = StartupCache()

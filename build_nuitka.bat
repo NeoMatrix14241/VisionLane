@@ -37,18 +37,26 @@ echo Building application with Nuitka...
     --standalone ^
     --nofollow-import-to=onnx ^
     --nofollow-imports ^
+    --enable-plugin=pylint-warnings ^
+    --enable-plugin=numpy ^
+    --enable-plugin=torch ^
     --enable-plugin=pyqt6 ^
     --enable-plugin=multiprocessing ^
     --include-qt-plugins=platforms,imageformats ^
     --include-data-file=icon.ico=icon.ico ^
     --include-data-file=config.ini=config.ini ^
     --include-data-file=doctr_torch_setup.py=doctr_torch_setup.py ^
+    --include-data-file=doctr_patch.py=doctr_patch.py ^
     --include-package=doctr ^
     --include-package=doctr.models ^
+    --include-package=doctr.models.detection ^
+    --include-package=doctr.models.recognition ^
+    --include-package=doctr.models.predictor ^
     --include-package=doctr.io ^
     --include-package=doctr.utils ^
     --include-package=doctr.datasets ^
     --include-package=doctr.transforms ^
+    --include-package=doctr.file_utils ^
     --include-package=torch ^
     --include-package=torch.nn ^
     --include-package=torch.cuda ^
@@ -95,6 +103,11 @@ echo Building application with Nuitka...
     --include-package=utils.logging_config ^
     --include-package=utils.safe_logger ^
     --include-package=utils.hocr_to_pdf ^
+    --include-package=utils.parallel_loader ^
+    --include-package=utils.system_diagnostics ^
+    --include-package=utils.startup_cache ^
+    --include-package=utils.startup_config ^
+    --include-package=utils.model_downloader ^
     --include-package-data=doctr ^
     --include-package-data=torch ^
     --include-package-data=torchvision ^
@@ -105,6 +118,8 @@ echo Building application with Nuitka...
     --include-data-dir=.venv\Lib\site-packages\torchvision=torchvision ^
     --include-data-dir=.venv\Lib\site-packages\torchaudio=torchaudio ^
     --include-data-dir=.venv\Lib\site-packages\doctr=doctr ^
+    --include-data-dir=.venv\Lib\site-packages\torch\lib=torch\lib ^
+    --include-data-dir=.venv\Lib\site-packages\torchvision\datasets=torchvision\datasets ^
     --output-dir=dist_nuitka ^
     --windows-icon-from-ico=icon.ico ^
     --windows-console-mode=force ^
@@ -117,43 +132,48 @@ IF %ERRORLEVEL% NEQ 0 (
 ) ELSE (
     echo Build complete!
     
-    REM Copy additional libraries that might be missed
-    echo Performing post-build library copying...
+    REM Performing post-build fixes for PyTorch detection
+    echo Performing post-build library copying and fixes...
+    
+    REM Create environment file to ensure PyTorch is detected
+    echo Creating PyTorch detection file...
+    echo USE_TORCH=1 > "dist_nuitka\main.dist\USE_TORCH"
+    echo DOCTR_BACKEND=torch >> "dist_nuitka\main.dist\USE_TORCH"
     
     REM Copy PyTorch DLLs
     if exist ".venv\Lib\site-packages\torch\lib" (
         echo Copying PyTorch libraries...
-        xcopy ".venv\Lib\site-packages\torch\lib\*" "dist\main.dist\torch\lib\" /Y /E /I 2>nul
+        xcopy ".venv\Lib\site-packages\torch\lib\*" "dist_nuitka\main.dist\torch\lib\" /Y /E /I 2>nul
     )
     
     REM Copy NVIDIA libraries
     if exist ".venv\Lib\site-packages\nvidia" (
         echo Copying NVIDIA libraries...
-        xcopy ".venv\Lib\site-packages\nvidia\*" "dist\main.dist\nvidia\" /Y /E /I 2>nul
+        xcopy ".venv\Lib\site-packages\nvidia\*" "dist_nuitka\main.dist\nvidia\" /Y /E /I 2>nul
     )
     
     REM Copy CUDA libraries if found in system
     for %%d in ("C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*") do (
         if exist "%%d\bin\*.dll" (
             echo Copying CUDA libraries from %%d...
-            xcopy "%%d\bin\cudart*.dll" "dist\main.dist\" /Y 2>nul
-            xcopy "%%d\bin\cublas*.dll" "dist\main.dist\" /Y 2>nul
-            xcopy "%%d\bin\curand*.dll" "dist\main.dist\" /Y 2>nul
-            xcopy "%%d\bin\cusolver*.dll" "dist\main.dist\" /Y 2>nul
-            xcopy "%%d\bin\cusparse*.dll" "dist\main.dist\" /Y 2>nul
-            xcopy "%%d\bin\cufft*.dll" "dist\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cudart*.dll" "dist_nuitka\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cublas*.dll" "dist_nuitka\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\curand*.dll" "dist_nuitka\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cusolver*.dll" "dist_nuitka\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cusparse*.dll" "dist_nuitka\main.dist\" /Y 2>nul
+            xcopy "%%d\bin\cufft*.dll" "dist_nuitka\main.dist\" /Y 2>nul
         )
     )    
     REM Copy DocTR models cache
     set "doctr_cache=%USERPROFILE%\.cache\doctr"
     if exist "%doctr_cache%" (
         echo Copying DocTR model cache...
-        xcopy "%doctr_cache%\*" "dist\main.dist\.cache\doctr\" /Y /E /I 2>nul
+        xcopy "%doctr_cache%\*" "dist_nuitka\main.dist\.cache\doctr\" /Y /E /I 2>nul
     )
     
     echo.
-    echo Build complete! Your application is ready in the dist folder.
-    echo Run main.exe from the dist\main.dist\ folder.
+    echo Build complete! Your application is ready in the dist_nuitka folder.
+    echo Run main.exe from the dist_nuitka\main.dist\ folder.
     
     pause
 )

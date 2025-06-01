@@ -83,7 +83,9 @@ class StartupConfig:
             'startup_timeout': '120',
             'max_parallel_workers': str(self.max_cpu_threads),
             'cache_expiry_hours': '24',
-            'skip_system_diagnostics': 'False'
+            'skip_system_diagnostics': 'False',
+            'detailed_logging': 'True',
+            'log_level': 'INFO'
         }
 
         for key, value in startup_defaults.items():
@@ -338,6 +340,12 @@ class StartupConfig:
 
     def should_skip_system_diagnostics(self) -> bool:
         return self.get_startup_option("skip_system_diagnostics", False)
+
+    def use_detailed_logging(self) -> bool:
+        return self.get_startup_option('detailed_logging', True)
+
+    def get_log_level(self) -> str:
+        return self.get_startup_option('log_level', 'INFO')
 
     def get_all_options(self) -> Dict[str, Any]:
         options = {}

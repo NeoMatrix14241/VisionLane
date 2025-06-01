@@ -10,6 +10,7 @@ __pycache__/
 
 # Distribution / packaging
 dist/
+dist_nuitka/
 build/
 icon/
 input/

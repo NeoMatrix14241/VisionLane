@@ -59,6 +59,6 @@ tqdm==4.67.1
 colorama==0.4.6
 typing_extensions==4.13.2
 pyinstaller==6.13.0
-nuitka==2.7.4
+nuitka==2.7.5
 zstandard==0.23.0
 reportlab==4.4.1

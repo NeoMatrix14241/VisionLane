@@ -3,608 +3,317 @@
 import sys
 import os
 
-# Note: DocTR setup will be done during splash screen loading for better user visibility
+# Set environment variables IMMEDIATELY
+os.environ['USE_TORCH'] = '1'
+os.environ['DOCTR_BACKEND'] = 'torch'
 
-# Minimize imports at the top level to speed up initial loading
-from PyQt6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel, QVBoxLayout, QWidget
-from PyQt6.QtCore import QCoreApplication, QTimer, Qt, QSize
-from PyQt6.QtGui import QPixmap, QPainter, QColor
-import traceback
-# Import these critical modules at the top level
-import logging
-from multiprocessing import freeze_support
-
-from utils.parallel_loader import StartupLoader
-from utils.system_diagnostics import SystemDiagnostics
-
-
-class FastSplashScreen(QSplashScreen):
-    """A minimal splash screen that matches the design of the main SplashScreen"""
-    def __init__(self, app):
-        # Add window flags to prevent disappearing when clicked
-        super().__init__(flags=Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
-        
-        # Create a pixmap with the same design as splash_screen.py
-        pixmap = QPixmap(QSize(400, 200))
-        pixmap.fill(Qt.GlobalColor.white)
-        self.setPixmap(pixmap)
-        
-        # Create widget to hold content
-        self.content = QWidget(self)
-        layout = QVBoxLayout(self.content)
-        layout.setContentsMargins(20, 20, 20, 20)  # Add margins for better appearance
-        
-        # Add title with the same styling
-        title = QLabel("VisionLane OCR")
-        title.setStyleSheet("""
-            QLabel {
-                color: #2C3E50;
-                font-size: 24px;
-                font-weight: bold;
-            }
-        """)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-        
-        # Add status label with the same styling
-        self.status_label = QLabel("Starting application...")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                color: #34495E;
-                font-size: 12px;
-            }
-        """)
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.status_label)
-        
-        # Add progress bar with the same styling
-        self.progress = QProgressBar()
-        self.progress.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #BDC3C7;
-                border-radius: 5px;
-                text-align: center;
-                height: 20px;
-            }
-            QProgressBar::chunk {
-                background-color: #3498DB;
-            }
-        """)
-        self.progress.setMinimum(0)
-        self.progress.setMaximum(100)
-        self.progress.setValue(5)  # Start with minimal progress
-        layout.addWidget(self.progress)
-        
-        # Set fixed size for content and splash
-        self.content.setFixedSize(400, 200)
-        self.setFixedSize(400, 200)
-        
-        # Center on screen
-        screen = app.primaryScreen().geometry()
-        self.move(
-            (screen.width() - self.width()) // 2,
-            (screen.height() - self.height()) // 2
-        )
-        
-        # Force content to be visible
-        self.content.show()
-        self.content.raise_()
-        
-        # Update layout and process events
-        layout.activate()
-        self.content.updateGeometry()
-        QCoreApplication.processEvents()
-        
-    def update_status(self, message, progress=None):
-        """Update status message and progress bar"""
-        self.status_label.setText(message)
-        if progress is not None:
-            self.progress.setValue(progress)
-        self.content.updateGeometry()
-        self.repaint()
-        QCoreApplication.processEvents()
+def show_instant_splash():
+    """Show splash screen with ABSOLUTE minimal imports - appears instantly"""
     
-    def paintEvent(self, event):
-        """Custom paint event to draw background and border"""
-        painter = QPainter(self)
-        painter.drawPixmap(0, 0, self.pixmap())
-        painter.setPen(QColor("#BDC3C7"))
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+    # Only import what's absolutely necessary for the splash
+    from PyQt6.QtWidgets import QApplication, QSplashScreen, QLabel, QVBoxLayout, QWidget, QProgressBar
+    from PyQt6.QtCore import Qt, QTimer, QCoreApplication
+    from PyQt6.QtGui import QFont, QPixmap, QPainter, QColor, QLinearGradient
     
-    # Override mousePressEvent to prevent splash from disappearing when clicked
-    def mousePressEvent(self, event):
-        # Just consume the event without doing anything
-        event.accept()
-
-
-def initialize_app():
-    """Initialize the application and return the splash screen immediately"""
-    # Set up application first - minimal setup
+    # Create app immediately
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     
-    # Create and show a fast splash screen immediately
-    splash = FastSplashScreen(app)
-    splash.show()
+    # Create a simple splash screen widget immediately
+    splash_widget = QWidget()
+    splash_widget.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+    # Enable translucent background to allow rounded corners
+    splash_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    splash_widget.resize(450, 320)
     
-    # Force immediate update
-    splash.update_status("Starting application...", 5)
+    # Center the splash screen
+    screen = app.primaryScreen().geometry()
+    splash_widget.move(
+        (screen.width() - splash_widget.width()) // 2,
+        (screen.height() - splash_widget.height()) // 2
+    )
+    
+    # Create inner container for rounded background
+    container = QWidget(splash_widget)
+    container.setGeometry(0, 0, 450, 320)
+    container.setStyleSheet("""
+        QWidget {
+            background-color: white;
+            border: 3px solid #2196F3;
+            border-radius: 15px;
+        }
+    """)
+    
+    # Create layout for the container
+    layout = QVBoxLayout(container)
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.setSpacing(20)
+    layout.setContentsMargins(40, 40, 40, 40)
+    
+    # Title with better styling
+    title_label = QLabel("VisionLane OCR")
+    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    title_font = QFont()
+    title_font.setPointSize(26)
+    title_font.setBold(True)
+    title_label.setFont(title_font)
+    title_label.setStyleSheet("""
+        QLabel {
+            color: #2196F3;
+            background-color: transparent;
+            padding: 15px;
+            font-weight: bold;
+        }
+    """)
+    
+    # Status label with better contrast
+    status_label = QLabel("Initializing...")
+    status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    status_font = QFont()
+    status_font.setPointSize(13)
+    status_label.setFont(status_font)
+    status_label.setStyleSheet("""
+        QLabel {
+            color: #555555;
+            background-color: transparent;
+            padding: 10px;
+            font-weight: normal;
+        }
+    """)
+    
+    # Progress bar with better contrast
+    progress_bar = QProgressBar()
+    progress_bar.setRange(0, 100)
+    progress_bar.setValue(0)
+    progress_bar.setTextVisible(True)
+    progress_bar.setStyleSheet("""
+        QProgressBar {
+            border: 2px solid #DDDDDD;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+            color: #333333;
+            background-color: #FFFFFF;
+            height: 30px;
+            font-size: 11px;
+        }
+        QProgressBar::chunk {
+            background-color: #2196F3;
+            border-radius: 8px;
+            margin: 1px;
+        }
+    """)
+    
+    # Add widgets to layout
+    layout.addWidget(title_label)
+    layout.addWidget(status_label)
+    layout.addWidget(progress_bar)
+    
+    # Make the main splash widget transparent (rounded corners will come from container)
+    splash_widget.setStyleSheet("""
+        QWidget {
+            background-color: transparent;
+        }
+    """)
+    
+    # Show splash immediately
+    splash_widget.show()
+    splash_widget.raise_()
+    splash_widget.activateWindow()
+    
+    # Force immediate rendering
+    app.processEvents()
     QCoreApplication.processEvents()
     
-    return app, splash
+    print("✓ Splash screen shown instantly!")
+    
+    # Create update function
+    def update_splash_status(message, progress=0):
+        status_label.setText(message)
+        progress_bar.setValue(progress)
+        progress_bar.setFormat(f"{progress}% - {message}")
+        app.processEvents()
+        QCoreApplication.processEvents()
+    
+    # Store references in app for later use
+    app.splash_widget = splash_widget
+    app.update_splash_status = update_splash_status
+    
+    return app
 
 
-def load_real_app(app, fast_splash):
-    """Load the real application with enhanced startup system"""
+def load_modules_progressively(app):
+    """Load all heavy modules one by one with progress updates"""
+    
     try:
-        # Import enhanced startup system
+        update_status = app.update_splash_status
+        
+        # Module loading progress tracking
+        modules_to_load = [
+            ("PyQt6 core modules", 5),
+            ("doctr_patch", 15),
+            ("doctr_torch_setup", 25),
+            ("Debug utilities", 30),
+            ("Startup configuration", 35),
+            ("Logging system", 40),
+            ("System diagnostics", 50),
+            ("Model management", 60),
+            ("Main application", 85),
+            ("User interface", 95)
+        ]
+        
+        current_step = 0
+        
+        # 1. Load basic PyQt6 modules
+        update_status("Loading PyQt6 core modules...", modules_to_load[current_step][1])
+        from PyQt6.QtCore import QTimer, QCoreApplication
+        import time
+        time.sleep(0.1)  # Brief pause to show progress
+        current_step += 1
+        
+        # 2. Load doctr_patch
+        update_status("Loading DocTR patch system...", modules_to_load[current_step][1])
+        doctr_patch = None
+        try:
+            import doctr_patch
+            update_status("✓ DocTR patch loaded successfully", modules_to_load[current_step][1])
+            time.sleep(0.1)
+        except ImportError as e:
+            update_status("⚠ DocTR patch not found", modules_to_load[current_step][1])
+            print(f"DocTR patch import error: {e}")
+            time.sleep(0.1)
+        current_step += 1
+        
+        # 3. Load doctr_torch_setup
+        update_status("Loading DocTR torch setup...", modules_to_load[current_step][1])
+        doctr_torch_setup = None
+        try:
+            import doctr_torch_setup
+            update_status("✓ DocTR torch setup loaded", modules_to_load[current_step][1])
+            time.sleep(0.1)
+        except ImportError as e:
+            update_status("⚠ DocTR torch setup not found", modules_to_load[current_step][1])
+            print(f"DocTR torch setup import error: {e}")
+            time.sleep(0.1)
+        current_step += 1
+        
+        # 4. Load debug utilities
+        update_status("Loading debug utilities...", modules_to_load[current_step][1])
         from pathlib import Path
-        from gui.splash_screen import SplashScreen
         from utils.debug_helper import DebugLogger, CrashHandler
+        time.sleep(0.1)
+        current_step += 1
+        
+        # 5. Load startup configuration
+        update_status("Loading startup configuration...", modules_to_load[current_step][1])
         from utils.startup_cache import startup_cache
         from utils.startup_config import StartupConfig
-        from utils.logging_config import setup_logging
-        
-        # Load startup configuration
         startup_config = StartupConfig()
+        time.sleep(0.1)
+        current_step += 1
         
-        # Setup logging with startup config
+        # 6. Setup logging
+        update_status("Initializing logging system...", modules_to_load[current_step][1])
+        from utils.logging_config import setup_logging
+        import logging
         logger = setup_logging(Path(__file__).parent, startup_config)
+        logger.info("Progressive module loading started")
+        time.sleep(0.1)
+        current_step += 1
         
-        # Replace fast splash with the real one
-        real_splash = SplashScreen(app)
-        real_splash.show()
-        fast_splash.close()
-        fast_splash.deleteLater()  # Ensure fast splash is properly cleaned up
-        
-        # Check if we should use parallel loading
-        if startup_config.should_use_parallel_loading() and not startup_config.is_fast_startup_mode():
-            real_splash.update_status("Initializing parallel loading system...", 5)
-            QCoreApplication.processEvents()
-            
-            # Use parallel loading system
-            loader = StartupLoader(
-                progress_callback=lambda msg: real_splash.update_status(f"Parallel: {msg}", None)
-            )
-            
-            # Setup tasks based on configuration
-            config_path = Path(__file__).parent / "config.ini"
-            loader.setup_loading_tasks(config_path)
-            
-            # Load with timeout
-            timeout = startup_config.get_startup_timeout()
-            results = loader.load_all(timeout=timeout)
-            
-            # Update progress based on results
-            summary = loader.loader.get_loading_summary()
-            if summary['success_rate'] > 0.8:  # 80% success rate
-                real_splash.update_status("✓ Parallel loading completed successfully", 50)
-            else:
-                real_splash.update_status(f"⚠ Parallel loading completed ({summary['failed']} issues)", 50)
-            
-            QCoreApplication.processEvents()
-            
+        # 7. System diagnostics (if needed)
+        update_status("Running system diagnostics...", modules_to_load[current_step][1])
+        if not startup_config.should_skip_system_diagnostics():
+            from utils.system_diagnostics import SystemDiagnostics
+            diagnostics = SystemDiagnostics()
+            diag_results = diagnostics.run_diagnostics(quick=True)
+            update_status("✓ System diagnostics complete", modules_to_load[current_step][1])
         else:
-            # Use traditional sequential loading
-            real_splash.update_status("Starting sequential loading...", 5)
-            QCoreApplication.processEvents()
-            
-            current_progress = 5
-            
-            # System diagnostics (if not skipped)
-            if not startup_config.should_skip_system_diagnostics():
-                real_splash.update_status("Running system diagnostics...", current_progress)
-                QCoreApplication.processEvents()
-                
-                diagnostics = SystemDiagnostics(
-                    progress_callback=lambda msg: real_splash.update_status(f"Diagnostics: {msg}", None)
-                )
-                
-                # Use quick diagnostics if minimal mode
-                diag_results = diagnostics.run_diagnostics(quick=startup_config.use_minimal_diagnostics())
-                
-                # Cache diagnostics if enabled
-                if startup_config.should_cache_results():
-                    startup_cache.cache_system_info(diag_results)
-                
-                current_progress = 10
-                
-                # Show diagnostics summary if detailed progress enabled
-                if startup_config.should_show_detailed_progress():
-                    summary = diagnostics.get_diagnostic_summary(diag_results)
-                    real_splash.update_status(f"✓ System: {summary[:50]}...", current_progress)
-                else:
-                    real_splash.update_status("✓ System diagnostics complete", current_progress)
-                
-                QCoreApplication.processEvents()
-            
-            # DocTR setup (if not skipped)
-            if not startup_config.should_skip_doctr_check():
-                real_splash.update_status("Setting up DocTR...", current_progress)
-                QCoreApplication.processEvents()
-                
-                try:
-                    import doctr_torch_setup
-                    
-                    # Create progress callback
-                    def doctr_progress_callback(message):
-                        nonlocal current_progress
-                        current_progress = min(current_progress + 0.5, 25)
-                        real_splash.update_status(f"DocTR: {message}", int(current_progress))
-                        QCoreApplication.processEvents()
-                    
-                    setup_success = doctr_torch_setup.setup_doctr_with_progress(
-                        progress_callback=doctr_progress_callback,
-                        use_cache=startup_config.should_cache_results(),
-                        detailed_progress=startup_config.should_show_detailed_progress()
-                    )
-                    
-                    current_progress = 25
-                    
-                    if setup_success:
-                        real_splash.update_status("✓ DocTR setup completed", current_progress)
-                    else:
-                        real_splash.update_status("⚠ DocTR setup completed with warnings", current_progress)
-                    
-                    QCoreApplication.processEvents()
-                    
-                except ImportError as e:
-                    real_splash.update_status("⚠ DocTR setup not found, continuing...", current_progress)
-                    QCoreApplication.processEvents()
-                    print(f"Warning: DocTR torch setup not found: {e}")
-                except Exception as e:
-                    real_splash.update_status(f"⚠ DocTR setup error: {str(e)[:30]}...", current_progress)
-                    QCoreApplication.processEvents()
-                    print(f"Error in DocTR setup: {e}")
-            
-            # Model handling
-            if startup_config.should_auto_download_models() and not startup_config.should_skip_model_validation():
-                real_splash.update_status("Checking models...", current_progress)
-                QCoreApplication.processEvents()
-                
-                # Use enhanced model downloader
-                from utils.model_downloader import EnhancedModelManager
-                
-                model_manager = EnhancedModelManager(
-                    progress_callback=lambda msg: real_splash.update_status(f"Models: {msg}", None)
-                )
-                
-                # Get model configuration
-                models_config = startup_config.get_models_config()
-                det_model = models_config['detection_model']
-                rec_model = models_config['recognition_model']
-                
-                # Allocate progress for model downloads (current_progress to 70%)
-                model_progress_start = current_progress
-                model_progress_total = 70 - current_progress
-                model_progress_per_model = model_progress_total // 2
-                
-                # Download detection model
-                real_splash.update_status(f"Downloading {det_model} (detection)...", model_progress_start + 5)
-                QCoreApplication.processEvents()
-                
-                det_success = model_manager.download_model_if_needed(det_model, "detection")
-                current_progress = model_progress_start + model_progress_per_model
-                
-                if det_success:
-                    real_splash.update_status(f"✓ {det_model} (detection) ready", current_progress)
-                else:
-                    real_splash.update_status(f"⚠ {det_model} download issue", current_progress)
-                QCoreApplication.processEvents()
-                
-                # Download recognition model
-                real_splash.update_status(f"Downloading {rec_model} (recognition)...", current_progress + 5)
-                QCoreApplication.processEvents()
-                
-                rec_success = model_manager.download_model_if_needed(rec_model, "recognition")
-                current_progress = 70
-                
-                if rec_success:
-                    real_splash.update_status(f"✓ {rec_model} (recognition) ready", current_progress)
-                else:
-                    real_splash.update_status(f"⚠ {rec_model} download issue", current_progress)
-                QCoreApplication.processEvents()
-                
-                if det_success and rec_success:
-                    real_splash.update_status("✓ All models ready", current_progress)
-                else:
-                    real_splash.update_status("⚠ Some model issues detected", current_progress)
-                
-                QCoreApplication.processEvents()
+            update_status("System diagnostics skipped", modules_to_load[current_step][1])
+        time.sleep(0.1)
+        current_step += 1
         
-        # Continue with the main application logic
-        main(app, real_splash, startup_config)
+        # 8. Model management
+        update_status("Checking OCR models...", modules_to_load[current_step][1])
+        if startup_config.should_auto_download_models():
+            try:
+                from utils.model_downloader import EnhancedModelManager
+                model_manager = EnhancedModelManager()
+                update_status("✓ Model system ready", modules_to_load[current_step][1])
+            except ImportError:
+                update_status("Model downloader not available", modules_to_load[current_step][1])
+        else:
+            update_status("Model validation skipped", modules_to_load[current_step][1])
+        time.sleep(0.1)
+        current_step += 1
+        
+        # 9. Load main application
+        update_status("Loading main application...", modules_to_load[current_step][1])
+        from gui.main_window import MainWindow
+        time.sleep(0.1)
+        current_step += 1
+        
+        # 10. Finalize UI
+        update_status("Finalizing user interface...", modules_to_load[current_step][1])
+        time.sleep(0.1)
+        
+        # Final status
+        update_status("VisionLane OCR ready!", 100)
+        time.sleep(0.3)
+        
+        # Now launch the main application
+        launch_main_application(app, startup_config, logger)
         
     except Exception as e:
-        print(f"Error during enhanced application loading: {e}")
+        print(f"Error during progressive loading: {e}")
         import traceback
         traceback.print_exc()
         
-        # Fallback to basic loading
+        # Try to launch anyway
         try:
-            main(app, real_splash)
+            launch_main_application(app)
         except:
-            # If even fallback fails, exit gracefully
-            print("Critical startup failure, exiting...")
+            print("Critical failure, exiting...")
             sys.exit(1)
 
 
-def main(app, splash, startup_config=None):
-    debug_logger = None
-    window = None
+def launch_main_application(app, startup_config=None, logger=None):
+    """Launch the main application window"""
+    
     try:
-        from pathlib import Path
-        from utils.debug_helper import DebugLogger, CrashHandler        # --- Enhanced Model Check and Download with Configuration ---
-        # Skip model check if parallel loading already handled it
-        if startup_config and startup_config.should_use_parallel_loading():
-            splash.update_status("Models handled by parallel loader", 50)
-            QCoreApplication.processEvents()
-        elif startup_config and startup_config.should_skip_model_validation():
-            splash.update_status("Model validation skipped by configuration", 50)
-            QCoreApplication.processEvents()
-        else:
-            splash.update_status("Checking OCR models...", 20)
-            QCoreApplication.processEvents()
-
-            import doctr.models as doctr_models
-            import configparser
-            from pathlib import Path
-            from utils.startup_cache import get_cached_models_status, cache_models_status
-
-            # Get model configuration
-            if startup_config:
-                models_config = startup_config.get_models_config()
-                det_model = models_config['detection_model']
-                rec_model = models_config['recognition_model']
-            else:
-                # Fallback to reading config directly
-                config_path = Path(__file__).parent / "config.ini"
-                config = configparser.ConfigParser()
-                config.read(config_path, encoding="utf-8")
-                det_model = config.get("General", "detection_model", fallback="db_resnet50")
-                rec_model = config.get("General", "recognition_model", fallback="parseq")
-
-            cache_dir = Path.home() / ".cache" / "doctr" / "models"
-
-            def model_exists(name):
-                return any(p.name.split('-')[0] == name for p in cache_dir.glob("*.pt"))
-
-            # Check cached model status first (if caching enabled)
-            use_cache = not startup_config or startup_config.should_cache_results()
-            cached_models = get_cached_models_status() if use_cache else None
-            
-            required_models = [
-                (det_model, "Text Detection", "detection"),
-                (rec_model, "Text Recognition", "recognition")
-            ]
-            
-            # Verify cached results are still valid
-            models_still_cached = False
-            if cached_models and use_cache:
-                models_still_cached = all(
-                    cached_models.get(model_name, False) and model_exists(model_name)
-                    for model_name, _, _ in required_models
-                )
-            
-            if models_still_cached:
-                splash.update_status("✓ All OCR models ready (cached)", 50)
-                QCoreApplication.processEvents()
-            else:
-                # Use enhanced model downloader if available
-                try:
-                    from utils.model_downloader import EnhancedModelManager
-                    
-                    model_manager = EnhancedModelManager(
-                        progress_callback=lambda msg: splash.update_status(f"Models: {msg}", None)
-                    )
-                    
-                    progress = 20
-                    progress_step = 15  # Each model gets 15% of progress
-                    
-                    for i, (model_name, model_desc, model_type) in enumerate(required_models):
-                        progress_start = progress + (i * progress_step)
-                        progress_end = progress_start + progress_step
-                        
-                        if not model_exists(model_name):
-                            # Check if auto-download is enabled
-                            if not startup_config or startup_config.should_auto_download_models():
-                                success = model_manager.download_model_if_needed(model_name, model_type)
-                                if success:
-                                    splash.update_status(f"✓ {model_name} ({model_desc}) ready", progress_end)
-                                else:
-                                    splash.update_status(f"⚠ {model_name} download issue", progress_end)
-                            else:
-                                splash.update_status(f"⚠ {model_name} not found (auto-download disabled)", progress_end)
-                        else:
-                            splash.update_status(f"✓ {model_name} ({model_desc}) found", progress_end)
-                        
-                        QCoreApplication.processEvents()
-                    
-                    # Cache model status if enabled
-                    if use_cache:
-                        models_status = {model_name: model_exists(model_name) for model_name, _, _ in required_models}
-                        cache_models_status(models_status)
-                    
-                except ImportError:
-                    # Fallback to original download method with proper async handling
-                    def download_model_with_progress(model_name, model_desc, model_type, progress_start, progress_end):
-                        """Download model with detailed progress updates and async handling"""
-                        try:
-                            splash.update_status(f"Preparing {model_name} download...", progress_start)
-                            QCoreApplication.processEvents()
-                            
-                            # Import required modules for async download
-                            import threading
-                            import time
-                            from queue import Queue, Empty
-                            
-                            # Progress tracking
-                            progress_queue = Queue()
-                            download_complete = threading.Event()
-                            download_success = threading.Event()
-                            error_message = None
-                            
-                            def download_worker():
-                                """Worker thread for downloading model"""
-                                nonlocal error_message
-                                try:
-                                    progress_queue.put(("Initializing download...", 5))
-                                    
-                                    # Actually download the model
-                                    if model_type == "detection":
-                                        progress_queue.put((f"Loading {model_name} detection model...", 20))
-                                        getattr(doctr_models.detection, model_name)(pretrained=True)
-                                    else:
-                                        progress_queue.put((f"Loading {model_name} recognition model...", 20))
-                                        getattr(doctr_models.recognition, model_name)(pretrained=True)
-                                    
-                                    progress_queue.put((f"Model {model_name} loaded successfully", 95))
-                                    download_success.set()
-                                    
-                                except Exception as e:
-                                    error_message = str(e)
-                                    progress_queue.put((f"Error downloading {model_name}: {str(e)[:30]}...", 0))
-                                finally:
-                                    download_complete.set()
-                            
-                            # Start download in background thread
-                            download_thread = threading.Thread(target=download_worker, daemon=True)
-                            download_thread.start()
-                            
-                            # Progress simulation with real updates
-                            progress_steps = [
-                                (f"Connecting to model repository...", 10),
-                                (f"Downloading {model_name} metadata...", 15),
-                                (f"Downloading {model_name} weights... (0%)", 20),
-                                (f"Downloading {model_name} weights... (25%)", 35),
-                                (f"Downloading {model_name} weights... (50%)", 50),
-                                (f"Downloading {model_name} weights... (75%)", 70),
-                                (f"Downloading {model_name} weights... (95%)", 85),
-                                (f"Finalizing {model_name} installation...", 90),
-                            ]
-                            
-                            current_step = 0
-                            step_delay = 0.5  # 500ms between steps
-                            max_wait_time = 300  # 5 minutes maximum wait
-                            start_time = time.time()
-                            
-                            while not download_complete.is_set() and (time.time() - start_time) < max_wait_time:
-                                # Check for real progress updates
-                                try:
-                                    msg, prog = progress_queue.get_nowait()
-                                    current_progress = progress_start + ((progress_end - progress_start) * prog / 100)
-                                    splash.update_status(msg, int(current_progress))
-                                    QCoreApplication.processEvents()
-                                except Empty:
-                                    # No real update, use simulated progress
-                                    if current_step < len(progress_steps):
-                                        step_msg, step_prog = progress_steps[current_step]
-                                        current_progress = progress_start + ((progress_end - progress_start) * step_prog / 100)
-                                        splash.update_status(step_msg, int(current_progress))
-                                        QCoreApplication.processEvents()
-                                        current_step += 1
-                                
-                                time.sleep(step_delay)
-                            
-                            # Wait for download to complete with timeout
-                            if download_complete.wait(timeout=10):
-                                if download_success.is_set():
-                                    splash.update_status(f"✓ {model_name} ({model_desc}) ready", progress_end)
-                                    QCoreApplication.processEvents()
-                                    return True
-                                else:
-                                    splash.update_status(f"✗ Failed to download {model_name}: {error_message[:30] if error_message else 'Unknown error'}...", progress_end)
-                                    QCoreApplication.processEvents()
-                                    return False
-                            else:
-                                # Timeout occurred
-                                splash.update_status(f"⚠ {model_name} download timeout, but may continue in background", progress_end)
-                                QCoreApplication.processEvents()
-                                return False
-                            
-
-                        except Exception as e:
-                            splash.update_status(f"✗ Failed to download {model_name}: {str(e)[:30]}...", progress_end)
-                            QCoreApplication.processEvents()
-                            return False
-                    
-                    # Better progress allocation for models (20-70%)
-                    progress = 20
-                    total_model_progress = 50  # 70 - 20 = 50% for models
-                    progress_per_model = total_model_progress // len(required_models)
-
-                    for i, (model_name, model_desc, model_type) in enumerate(required_models):
-                        progress_start = progress + (i * progress_per_model)
-                        progress_end = progress_start + progress_per_model
-                        
-                        splash.update_status(f"Checking {model_name} ({model_desc})...", progress_start)
-                        QCoreApplication.processEvents()
-                        
-                        if not model_exists(model_name):
-                            # Check if auto-download is enabled
-                            if not startup_config or startup_config.should_auto_download_models():
-                                splash.update_status(f"Model {model_name} not found, downloading...", progress_start + 2)
-                                QCoreApplication.processEvents()
-                                
-                                success = download_model_with_progress(model_name, model_desc, model_type, progress_start, progress_end)
-                                if not success:
-                                    splash.update_status(f"⚠ {model_name} download had issues, continuing...", progress_end)
-                                    QCoreApplication.processEvents()
-                            else:
-                                splash.update_status(f"⚠ {model_name} not found (auto-download disabled)", progress_end)
-                                QCoreApplication.processEvents()
-                        else:
-                            splash.update_status(f"✓ {model_name} ({model_desc}) found", progress_end)
-                            QCoreApplication.processEvents()
-                
-                splash.update_status("All OCR models processed", 70)
-                QCoreApplication.processEvents()
-        # --- End Enhanced Model Check ---
-
-        splash.update_status("Loading core modules...", 75)
-        QCoreApplication.processEvents()
+        update_status = app.update_splash_status
         
-        splash.update_status("Loading utilities...", 80)
-        QCoreApplication.processEvents()
+        update_status("Creating main window...", 98)
         
-        splash.update_status("Initializing logging...", 85)
-        QCoreApplication.processEvents()
+        # Import main window
+        from gui.main_window import MainWindow
+        from utils.debug_helper import DebugLogger
         
-        logger = logging.getLogger(__name__)
+        # Create debug logger
         debug_logger = DebugLogger()
         
-        splash.update_status("Configuring system...", 90)
-        QCoreApplication.processEvents()
-        
-        logger.info("Initializing application")
-        logger.debug(f"Python executable: {sys.executable}")
-        logger.debug(f"Working directory: {os.getcwd()}")
-        
-        base_dir = Path(__file__).parent.resolve()
-        
-        splash.update_status("Loading main window...", 95)
-        QCoreApplication.processEvents()
-        from gui.main_window import MainWindow
+        # Create main window
         window = MainWindow()
         
+        # Setup app references
         app.window = window
         app._cleanup_done = False
         
+        # Setup cleanup
         def cleanup_on_exit():
             if not app._cleanup_done:
                 try:
-                    logger.info("Application cleanup started")
+                    if logger:
+                        logger.info("Application cleanup started")
+                    
                     if window:
-                        # Stop all processing and timers
                         window._stop_all_timers()
                         if hasattr(window, 'current_worker') and window.current_worker:
                             window.current_worker.stop(force=True)
-                        
-                        # Clean up resources
                         window._cleanup_resources()
                         window.close()
                     
-                    # Kill any child processes
+                    # Kill child processes
                     import psutil
                     current_process = psutil.Process()
                     children = current_process.children(recursive=True)
@@ -620,7 +329,8 @@ def main(app, splash, startup_config=None):
                         except Exception:
                             pass
                     
-                    logger.info("Application cleanup completed")
+                    if logger:
+                        logger.info("Application cleanup completed")
                 except Exception as e:
                     print(f"Error during cleanup: {e}")
                 finally:
@@ -628,70 +338,76 @@ def main(app, splash, startup_config=None):
 
         app.aboutToQuit.connect(cleanup_on_exit)
         
-        splash.update_status("Finalizing interface...", 98)
-        QCoreApplication.processEvents()
+        update_status("Launching application...", 100)
         
-        # Don't hide window initially - let splash finish first
-        splash.update_status("Ready!", 100)
-        QCoreApplication.processEvents()
-        
-        # Small delay to show completion
-        import time
-        time.sleep(0.5)
-        
-        # Show window first, then close splash
+        # Show main window
         window.show()
         window.activateWindow()
         window.raise_()
-        QCoreApplication.processEvents()
         
-        # Use a longer delay to ensure window is fully rendered
+        # Process events to ensure window is rendered
+        app.processEvents()
+        
+        # Close splash after a short delay
         def close_splash():
             try:
-                splash.close()
-                splash.deleteLater()
-            except:
-                pass
+                if hasattr(app, 'splash_widget') and app.splash_widget:
+                    app.splash_widget.close()
+                    app.splash_widget.deleteLater()
+                    delattr(app, 'splash_widget')
+            except Exception as e:
+                print(f"Error closing splash: {e}")
         
-        QTimer.singleShot(200, close_splash)
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(500, close_splash)  # 0.5 second delay
         
         if logger:
-            logger.info("Starting Qt event loop")
+            logger.info("Application launched successfully")
         
-        return None
+        print("✓ VisionLane OCR launched successfully!")
         
     except Exception as e:
-        if debug_logger and debug_logger.crash_handler:
-            debug_logger.crash_handler.handle_exception(type(e), e, e.__traceback__)
-        try:
-            if 'logger' in locals():
-                logger.error(f"Failed to start: {e}")
-                logger.error("Stack trace:", exc_info=True)
-        except:
-            print(f"Failed to start: {e}")
-            traceback.print_exc()
+        print(f"Error launching main application: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Close splash and exit
+        if hasattr(app, 'splash_widget'):
+            try:
+                app.splash_widget.close()
+            except:
+                pass
+        sys.exit(1)
 
 
 if __name__ == '__main__':
-    freeze_support()
     try:
-        # Initialize app and show splash
-        app, fast_splash = initialize_app()
+        print("Starting VisionLane OCR...")
         
-        # Use QTimer to defer loading rest of application
-        QTimer.singleShot(0, lambda: load_real_app(app, fast_splash))
+        # Step 1: Show splash screen INSTANTLY
+        app = show_instant_splash()
         
-        # Start the event loop just once
+        # Step 2: Load modules progressively using QTimer (non-blocking)
+        def start_progressive_loading():
+            load_modules_progressively(app)
+        
+        # Use QTimer to start loading after splash is shown
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, start_progressive_loading)  # 100ms delay to ensure splash renders
+        
+        # Step 3: Start event loop
+        print("Starting Qt event loop...")
         exit_code = app.exec()
         
-        # Force exit with proper cleanup
+        # Step 4: Clean exit
         try:
             sys.exit(exit_code)
         except SystemExit:
             os._exit(exit_code)
         
     except Exception as e:
-        print(f"Fatal error during startup: {e}")
+        print(f"Fatal startup error: {e}")
+        import traceback
         print(traceback.format_exc())
         try:
             sys.exit(1)

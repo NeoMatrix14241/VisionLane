@@ -990,9 +990,10 @@ class OCRProcessor:
             pdf_output_folder = self.pdf_dir / relative_path
             pdf_output_folder.mkdir(parents=True, exist_ok=True)
             
-            # Also create HOCR directory with same structure if needed
+            # Always define hocr_output_folder, even if HOCR output is not requested
+            # This is needed for temporary HOCR generation during PDF creation
+            hocr_output_folder = self.hocr_dir / relative_path
             if "hocr" in self.output_formats:
-                hocr_output_folder = self.hocr_dir / relative_path
                 hocr_output_folder.mkdir(parents=True, exist_ok=True)
 
             # Create and ensure temp directory exists
@@ -1029,11 +1030,12 @@ class OCRProcessor:
                     
                     try:
                         # Process page with proper PDF name for HOCR organization
+                        # Always pass hocr_output_folder, but only save HOCR if requested
                         self._process_single_image(
                             page_img, 
                             temp_pdf_path, 
                             dpi=300,
-                            hocr_output_folder=hocr_output_folder,
+                            hocr_output_folder=hocr_output_folder if "hocr" in self.output_formats else None,
                             page_num=idx,
                             pdf_name=pdf_path.name
                         )
@@ -1454,49 +1456,46 @@ class OCRProcessor:
             temp_hocr = self.temp_dir / f"{image_path.stem}_{timestamp}_temp.hocr"
             
             try:
-                # Save HOCR if it's in output formats or needed for PDF
-                hocr_needed = "hocr" in self.output_formats or "pdf" in self.output_formats
-                if hocr_needed:
-                    # Save temp HOCR first
-                    with open(temp_hocr, "w", encoding="utf-8") as f:
-                        f.write(xml_outputs[0][0].decode())
-                
-                    # If HOCR output is requested, save to final location
-                    if "hocr" in self.output_formats:
-                        # For PDF pages, use page numbering in HOCR filename
-                        if hocr_output_folder and page_num is not None and pdf_name is not None:
-                            # Create a subfolder with the PDF name for the HOCR files
-                            pdf_basename = Path(pdf_name).stem  # Get PDF name without extension
-                            pdf_hocr_subdir = hocr_output_folder / pdf_basename
-                            pdf_hocr_subdir.mkdir(parents=True, exist_ok=True)
-                            
-                            # Create HOCR file with PDF name and page number
-                            final_hocr_name = f"{pdf_basename}_page_{page_num:04d}.hocr"
-                            final_hocr_path = pdf_hocr_subdir / final_hocr_name
-                            
-                            # Ensure parent directory exists
-                            final_hocr_path.parent.mkdir(parents=True, exist_ok=True)
-                              # Copy HOCR to final location
-                            shutil.copy2(temp_hocr, final_hocr_path)
-                            logger.info(f"Created HOCR output: {final_hocr_path}")
-                            hocr_saved_to_output = True
-                        else:
-                            # For regular images, preserve folder structure without extra subfolders
-                            # Calculate relative path from input_path for proper folder structure
-                            try:
-                                relative_path = image_path.parent.relative_to(self.input_path)
-                            except ValueError:
-                                # Fallback if image is outside input_path
-                                relative_path = Path(image_path.parent.name)
-                            
-                            # Create HOCR output directory preserving folder structure
-                            hocr_output_subdir = self.hocr_dir / relative_path
-                            hocr_output_subdir.mkdir(parents=True, exist_ok=True)
-                            
-                            final_hocr_path = hocr_output_subdir / f"{image_path.stem}.hocr"
-                            shutil.copy2(temp_hocr, final_hocr_path)
-                            logger.info(f"Created HOCR output: {final_hocr_path}")
-                            hocr_saved_to_output = True
+                # Always save temp HOCR file (needed for PDF creation)
+                with open(temp_hocr, "w", encoding="utf-8") as f:
+                    f.write(xml_outputs[0][0].decode())
+            
+                # Only save HOCR to output if it's requested in output formats
+                if "hocr" in self.output_formats:
+                    # For PDF pages, use page numbering in HOCR filename
+                    if hocr_output_folder and page_num is not None and pdf_name is not None:
+                        # Create a subfolder with the PDF name for the HOCR files
+                        pdf_basename = Path(pdf_name).stem  # Get PDF name without extension
+                        pdf_hocr_subdir = hocr_output_folder / pdf_basename
+                        pdf_hocr_subdir.mkdir(parents=True, exist_ok=True)
+                        
+                        # Create HOCR file with PDF name and page number
+                        final_hocr_name = f"{pdf_basename}_page_{page_num:04d}.hocr"
+                        final_hocr_path = pdf_hocr_subdir / final_hocr_name
+                        
+                        # Ensure parent directory exists
+                        final_hocr_path.parent.mkdir(parents=True, exist_ok=True)
+                          # Copy HOCR to final location
+                        shutil.copy2(temp_hocr, final_hocr_path)
+                        logger.info(f"Created HOCR output: {final_hocr_path}")
+                        hocr_saved_to_output = True
+                    else:
+                        # For regular images, preserve folder structure without extra subfolders
+                        # Calculate relative path from input_path for proper folder structure
+                        try:
+                            relative_path = image_path.parent.relative_to(self.input_path)
+                        except ValueError:
+                            # Fallback if image is outside input_path
+                            relative_path = Path(image_path.parent.name)
+                        
+                        # Create HOCR output directory preserving folder structure
+                        hocr_output_subdir = self.hocr_dir / relative_path
+                        hocr_output_subdir.mkdir(parents=True, exist_ok=True)
+                        
+                        final_hocr_path = hocr_output_subdir / f"{image_path.stem}.hocr"
+                        shutil.copy2(temp_hocr, final_hocr_path)
+                        logger.info(f"Created HOCR output: {final_hocr_path}")
+                        hocr_saved_to_output = True
             except Exception as e:
                 logger.error(f"Failed to write HOCR file: {e}")
                 raise
@@ -1589,7 +1588,6 @@ class OCRProcessor:
                         logger.error(f"PDF creation error (attempt {attempt+1}): {e}")
                         if attempt == max_retries - 1:
                             raise RuntimeError(f"Failed to create PDF after {max_retries} attempts: {e}")
-                        time.sleep(0.2)  # Short delay before retry
               # --- NEW: Compress the PDF after creation ---
             if "pdf" in self.output_formats and hasattr(self, "compress_enabled") and self.compress_enabled:
                 try:
@@ -1667,19 +1665,19 @@ class OCRProcessor:
                     temp_converted_image.unlink()
                 except Exception as e:
                     logger.warning(f"Could not delete temp converted image: {e}")
-                    
-            # Clean up compressed image if it was created
+            
+            # Clean up processed image if it was created and different from original
             if processed_image_path != image_path and processed_image_path.exists() and processed_image_path != temp_converted_image:
                 try:
                     processed_image_path.unlink()
                 except Exception:
                     pass
-                    
+            
             # Safe GPU cleanup
             if torch.cuda.is_available():
                 try:
                     torch.cuda.empty_cache()
                 except Exception as e:
                     logger.warning(f"Could not clean GPU memory: {e}")
-                    
+            
             gc.collect()
