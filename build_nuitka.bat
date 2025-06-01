@@ -55,9 +55,19 @@ echo Building application with Nuitka...
     --include-package=doctr.models.predictor ^
     --include-package=doctr.io ^
     --include-package=doctr.utils ^
+    --include-package=doctr.utils.multithreading ^
     --include-package=doctr.datasets ^
     --include-package=doctr.transforms ^
     --include-package=doctr.file_utils ^
+    --include-package=langdetect ^
+    --include-package=langdetect.detector ^
+    --include-package=langdetect.detector_factory ^
+    --include-package=langdetect.lang_detect_exception ^
+    --include-package=langdetect.utils ^
+    --include-package=langdetect.utils.ngram ^
+    --include-package=langdetect.utils.messages ^
+    --include-package-data=langdetect ^
+    --include-data-dir=.venv\Lib\site-packages\langdetect=langdetect ^
     --include-package=torch ^
     --include-package=torch.nn ^
     --include-package=torch.cuda ^

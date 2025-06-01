@@ -34,27 +34,43 @@ except ImportError:
 if 'doctr.file_utils' in sys.modules:
     sys.modules['doctr.file_utils']._TORCH_AVAILABLE = _TORCH_AVAILABLE
     sys.modules['doctr.file_utils']._TF_AVAILABLE = False
+    if not hasattr(sys.modules['doctr.file_utils'], 'ENV_VARS_TRUE_VALUES'):
+        sys.modules['doctr.file_utils'].ENV_VARS_TRUE_VALUES = ['TRUE', 'True', 'true', '1', 'YES', 'Yes', 'yes']
     print("DocTR Setup: Directly patched doctr.file_utils in sys.modules")
 
 # Create a custom importer to patch doctr.file_utils on import
 _original_import = __import__
+_patching_in_progress = set()  # Prevent infinite loops
 
 def _patched_import(name, globals=None, locals=None, fromlist=(), level=0):
-    module = _original_import(name, globals, locals, fromlist, level)
+    # Prevent infinite import loops during patching
+    if name in _patching_in_progress:
+        return _original_import(name, globals, locals, fromlist, level)
     
-    # Patch doctr.file_utils when it's imported
-    if name == 'doctr.file_utils' or (name == 'file_utils' and fromlist and 'doctr' in globals.get('__name__', '')):
-        if hasattr(module, '_TORCH_AVAILABLE'):
-            module._TORCH_AVAILABLE = _TORCH_AVAILABLE
-            module._TF_AVAILABLE = False
-            print("DocTR Setup: Patched doctr.file_utils._TORCH_AVAILABLE during import")
+    try:
+        _patching_in_progress.add(name)
+        module = _original_import(name, globals, locals, fromlist, level)
         
-        # Replace is_torch_available function
-        if hasattr(module, 'is_torch_available'):
-            module.is_torch_available = lambda: _TORCH_AVAILABLE
-            print("DocTR Setup: Patched is_torch_available function")
-    
-    return module
+        # Patch doctr.file_utils when it's imported
+        if name == 'doctr.file_utils' or (name == 'file_utils' and fromlist and globals and 'doctr' in globals.get('__name__', '')):
+            if hasattr(module, '_TORCH_AVAILABLE'):
+                module._TORCH_AVAILABLE = _TORCH_AVAILABLE
+                module._TF_AVAILABLE = False
+                print("DocTR Setup: Patched doctr.file_utils._TORCH_AVAILABLE during import")
+            
+            # Add missing ENV_VARS_TRUE_VALUES
+            if not hasattr(module, 'ENV_VARS_TRUE_VALUES'):
+                module.ENV_VARS_TRUE_VALUES = ['TRUE', 'True', 'true', '1', 'YES', 'Yes', 'yes']
+                print("DocTR Setup: Added ENV_VARS_TRUE_VALUES to doctr.file_utils")
+            
+            # Replace is_torch_available function
+            if hasattr(module, 'is_torch_available'):
+                module.is_torch_available = lambda: _TORCH_AVAILABLE
+                print("DocTR Setup: Patched is_torch_available function")
+        
+        return module
+    finally:
+        _patching_in_progress.discard(name)
 
 # Install patched importer
 sys.modules['builtins'].__import__ = _patched_import
@@ -143,6 +159,7 @@ def create_fallback_mocks():
         file_utils_mock.is_tf_available = lambda: False
         file_utils_mock._TORCH_AVAILABLE = _TORCH_AVAILABLE
         file_utils_mock._TF_AVAILABLE = False
+        file_utils_mock.ENV_VARS_TRUE_VALUES = ['TRUE', 'True', 'true', '1', 'YES', 'Yes', 'yes']
         file_utils_mock.requires_package = requires_package
         file_utils_mock.CLASS_NAME = 'MockClassName'
         sys.modules['doctr.file_utils'] = file_utils_mock
