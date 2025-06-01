@@ -144,6 +144,7 @@ def show_instant_splash():
 
 def load_modules_progressively(app):
     """Load all heavy modules one by one with progress updates"""
+    import sys
     
     try:
         update_status = app.update_splash_status
