@@ -58,7 +58,6 @@ echo Building application with Nuitka...
     --include-package=doctr.datasets ^
     --include-package=doctr.transforms ^
     --include-package=doctr.file_utils ^
-    --include-package=doctr._backend ^
     --include-package=torch ^
     --include-package=torch.nn ^
     --include-package=torch.cuda ^
