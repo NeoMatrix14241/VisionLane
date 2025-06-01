@@ -5,14 +5,15 @@ Provides detailed system information and checks during startup
 """
 
 import platform
-import psutil
 import sys
-import os
-import subprocess
+import psutil
 import time
-from pathlib import Path
-from typing import Dict, Any, Callable, Optional, List
 import logging
+import threading
+import socket
+import hashlib
+from pathlib import Path
+from typing import Dict, Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
