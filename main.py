@@ -171,7 +171,7 @@ def load_modules_progressively(app):
         time.sleep(0.1)  # Brief pause to show progress
         current_step += 1
         
-        # 2. Load doctr_patch
+        # 2. Load doctr_patch FIRST to ensure proper mocking
         update_status("Loading DocTR patch system...", modules_to_load[current_step][1])
         doctr_patch = None
         try:
@@ -184,11 +184,19 @@ def load_modules_progressively(app):
             time.sleep(0.1)
         current_step += 1
         
-        # 3. Load doctr_torch_setup
+        # 3. Load doctr_torch_setup with enhanced mocking
         update_status("Loading DocTR torch setup...", modules_to_load[current_step][1])
         doctr_torch_setup = None
         try:
             import doctr_torch_setup
+            
+            # Ensure the mock has all required constants
+            if 'doctr.file_utils' in sys.modules:
+                file_utils = sys.modules['doctr.file_utils']
+                if not hasattr(file_utils, 'ENV_VARS_TRUE_VALUES'):
+                    file_utils.ENV_VARS_TRUE_VALUES = ['TRUE', 'True', 'true', '1', 'YES', 'Yes', 'yes']
+                    print("DocTR Setup: Added missing ENV_VARS_TRUE_VALUES to mock")
+                
             update_status("✓ DocTR torch setup loaded", modules_to_load[current_step][1])
             time.sleep(0.1)
         except ImportError as e:
@@ -268,6 +276,27 @@ def load_modules_progressively(app):
         print(f"Error during progressive loading: {e}")
         import traceback
         traceback.print_exc()
+        
+        # Create emergency mock before fallback
+        try:
+            import sys
+            import types
+            
+            # Create comprehensive mock with all required constants
+            if 'doctr.file_utils' not in sys.modules:
+                print("Creating emergency DocTR file_utils mock...")
+                file_utils_mock = types.ModuleType('doctr.file_utils')
+                file_utils_mock.is_torch_available = lambda: True
+                file_utils_mock.is_tf_available = lambda: False
+                file_utils_mock._TORCH_AVAILABLE = True
+                file_utils_mock._TF_AVAILABLE = False
+                file_utils_mock.ENV_VARS_TRUE_VALUES = ['TRUE', 'True', 'true', '1', 'YES', 'Yes', 'yes']
+                file_utils_mock.requires_package = lambda package_name, error_msg=None: lambda func: func
+                file_utils_mock.CLASS_NAME = 'MockClassName'
+                sys.modules['doctr.file_utils'] = file_utils_mock
+                print("Emergency mock created successfully")
+        except Exception as mock_error:
+            print(f"Emergency mock creation failed: {mock_error}")
         
         # Try to launch anyway
         try:
