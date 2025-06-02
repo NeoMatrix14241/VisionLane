@@ -1,4 +1,4 @@
-from ocr_processor import OCRProcessor
+from core.ocr_processor import OCRProcessor
 from utils.logging_config import setup_logging
 import logging
 import os

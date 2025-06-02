@@ -218,7 +218,7 @@ class StartupLoader:
     
     def _run_doctr_setup(self):
         """Run DocTR setup"""
-        import doctr_torch_setup
+        from core import doctr_torch_setup
         return doctr_torch_setup.setup_doctr_with_progress(self.progress_callback)
     
     def _load_config(self, config_path=None):

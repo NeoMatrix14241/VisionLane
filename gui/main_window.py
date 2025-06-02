@@ -25,7 +25,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 # Now import project modules
-from ocr_processor import OCRProcessor
+from core.ocr_processor import OCRProcessor
 from .processing_thread import OCRWorker
 from utils.process_manager import ProcessManager
 

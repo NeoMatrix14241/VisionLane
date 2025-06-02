@@ -169,14 +169,23 @@ def load_modules_progressively(app):
         update_status("Loading PyQt6 core modules...", modules_to_load[current_step][1])
         from PyQt6.QtCore import QTimer, QCoreApplication
         import time
-        time.sleep(0.1)  # Brief pause to show progress
-        current_step += 1
-        
-        # 2. Load doctr_patch FIRST to ensure proper mocking
+        time.sleep(0.1)  # Brief pause to show progress        current_step += 1
+          # 2. Load CUDA patches FIRST
+        update_status("Loading CUDA compatibility patches...", modules_to_load[current_step][1])
+        try:
+            from core import cuda_patch_wrapper
+            update_status("✓ CUDA patches loaded successfully", modules_to_load[current_step][1])
+            time.sleep(0.1)
+        except ImportError as e:
+            update_status("⚠ CUDA patches not found", modules_to_load[current_step][1])
+            print(f"CUDA patch import error: {e}")
+            time.sleep(0.1)
+            
+        # 3. Load doctr_patch NEXT to ensure proper mocking
         update_status("Loading DocTR patch system...", modules_to_load[current_step][1])
         doctr_patch = None
         try:
-            import doctr_patch
+            from core import doctr_patch
             update_status("✓ DocTR patch loaded successfully", modules_to_load[current_step][1])
             time.sleep(0.1)
         except ImportError as e:
@@ -185,11 +194,11 @@ def load_modules_progressively(app):
             time.sleep(0.1)
         current_step += 1
         
-        # 3. Load doctr_torch_setup with enhanced mocking
+        # 4. Load doctr_torch_setup with enhanced mocking
         update_status("Loading DocTR torch setup...", modules_to_load[current_step][1])
         doctr_torch_setup = None
         try:
-            import doctr_torch_setup
+            from core import doctr_torch_setup
             
             # Ensure the mock has all required constants
             if 'doctr.file_utils' in sys.modules:
