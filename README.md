@@ -182,7 +182,7 @@ You can build VisionLane OCR as a standalone executable using either Nuitka (rec
     build_nuitka.bat
     ```
 
-   - The output will be in the `dist_nuitka` directory.
+   - The output will be in the `dist_nuitka\main.dist` directory.
    - By default, this uses "standalone" mode (a folder with all dependencies).
 
 ### Build with PyInstaller (Alternative)
@@ -197,7 +197,7 @@ You can build VisionLane OCR as a standalone executable using either Nuitka (rec
     build_pyinstaller.bat
     ```
 
-   - The output will be in the `dist_pyinstaller` directory.
+   - The output will be in the `dist_pyinstaller\dist\VisionLaneOCR` directory.
    - This uses the `build.spec` file for configuration.
 
 **Note:**  
