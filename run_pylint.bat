@@ -1,6 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: Clean up temp files at the start
+del temp_files.txt 2>nul
+del temp_module_count.txt 2>nul
+del temp_error_count.txt 2>nul
+del temp_warning_count.txt 2>nul
+
+:: Set Python and Pip executables to use the virtual environment
+set "PYTHON_EXEC=.venv\Scripts\python.exe"
+set "PIP_EXEC=.venv\Scripts\pip.exe"
+
 :: Set colors for output
 set "GREEN=[32m"
 set "YELLOW=[33m"
@@ -42,10 +52,10 @@ if defined VIRTUAL_ENV (
 echo.
 
 :: Check if Pylint is installed
-python -m pylint --version >nul 2>&1
+%PYTHON_EXEC% -m pylint --version >nul 2>&1
 if errorlevel 1 (
     echo %RED%[ERROR]%RESET% Pylint not found. Installing from requirements.txt...
-    pip install pylint==3.3.7
+    %PIP_EXEC% install pylint==3.3.7
     if errorlevel 1 (
         echo %RED%[ERROR]%RESET% Failed to install Pylint. Exiting.
         pause
@@ -53,7 +63,7 @@ if errorlevel 1 (
     )
 ) else (
     echo %GREEN%[INFO]%RESET% Pylint is installed and ready
-    python -m pylint --version
+    %PYTHON_EXEC% -m pylint --version
 )
 
 :: Define directories to exclude
@@ -150,9 +160,9 @@ echo [PYLINT ANALYSIS RESULTS] >> "%log_file%"
 echo. >> "%log_file%"
 
 if exist .pylintrc (
-    python -m pylint --rcfile=.pylintrc --output-format=text --reports=yes --score=yes --fail-under=6.0 %pylint_files% >> "%log_file%" 2>&1
+    %PYTHON_EXEC% -m pylint --rcfile=.pylintrc --output-format=text --reports=yes --score=yes --fail-under=6.0 %pylint_files% >> "%log_file%" 2>&1
 ) else (
-    python -m pylint --output-format=text --reports=yes --score=yes --fail-under=6.0 %pylint_files% >> "%log_file%" 2>&1
+    %PYTHON_EXEC% -m pylint --output-format=text --reports=yes --score=yes --fail-under=6.0 %pylint_files% >> "%log_file%" 2>&1
 )
 
 :: Capture return code
@@ -161,9 +171,9 @@ set pylint_exit_code=%errorlevel%
 :: Generate JSON output for detailed analysis
 echo %YELLOW%[INFO]%RESET% Generating JSON output for detailed analysis...
 if exist .pylintrc (
-    python -m pylint --rcfile=.pylintrc --output-format=json --reports=no %pylint_files% > "%json_file%" 2>nul
+    %PYTHON_EXEC% -m pylint --rcfile=.pylintrc --output-format=json --reports=no %pylint_files% > "%json_file%" 2>nul
 ) else (
-    python -m pylint --output-format=json --reports=no %pylint_files% > "%json_file%" 2>nul
+    %PYTHON_EXEC% -m pylint --output-format=json --reports=no %pylint_files% > "%json_file%" 2>nul
 )
 
 :: Extract score from log file
@@ -183,14 +193,16 @@ echo %YELLOW%[INFO]%RESET% Generating summary report...
     echo Exit Code: %pylint_exit_code%
     echo ============================================================
     echo.
-    
-    if defined score_line (
-        echo SCORE RESULTS:
-        echo %score_line%
-    ) else (
-        echo SCORE RESULTS: Unable to extract score from analysis
-    )
-    
+) > "%summary_file%"
+
+if defined score_line (
+    echo SCORE RESULTS: >> "%summary_file%"
+    echo %score_line% >> "%summary_file%"
+) else (
+    echo SCORE RESULTS: Unable to extract score from analysis >> "%summary_file%"
+)
+
+(
     echo.
     echo LOG FILES GENERATED:
     echo - Full Report: %log_file%
@@ -255,10 +267,13 @@ echo %YELLOW%[INFO]%RESET% Generating summary report...
     echo 4. Update code and re-run analysis
     echo.
     echo ============================================================
-) > "%summary_file%"
+) >> "%summary_file%"
 
 :: Clean up temp files
 del temp_files.txt 2>nul
+del temp_module_count.txt 2>nul
+del temp_error_count.txt 2>nul
+del temp_warning_count.txt 2>nul
 
 :: Display results
 echo.

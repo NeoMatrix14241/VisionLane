@@ -35,3 +35,9 @@ logs/
 Thumbs.db
 build.spec.bak
 uninstall_modules.txt
+
+# Temp files
+temp_files.txt
+temp_module_count.txt
+temp_error_count.txt
+temp_warning_count.txt
