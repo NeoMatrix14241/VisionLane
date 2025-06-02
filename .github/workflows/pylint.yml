@@ -40,10 +40,12 @@ jobs:
     - name: Setup pylint config
       run: |
         if [ -f sample_lint.txt ]; then 
-          # Fix regex patterns in the config file
-          sed 's/\*_test\\.py\$/.*_test\\.py\$/' sample_lint.txt > .pylintrc
-          sed -i 's/test_\*\\.py\$/test_.*\\.py\$/' .pylintrc
+          # Fix all regex patterns in the config file
+          sed 's/\*_test\\.py\$/.*_test\\.py\$/g' sample_lint.txt | \
+          sed 's/test_\*\\.py\$/test_.*\\.py\$/g' | \
+          sed 's/\*\\\./.*\\\\./g' > .pylintrc
           echo "Using fixed custom pylint configuration"
+          echo "Fixed regex patterns in pylint config"
         else
           echo "Using default pylint configuration"
         fi
