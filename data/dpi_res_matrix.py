@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-
 # Original data as CSV string
 csv_data = """
 Paper Size,Width (in),Height (in),DPI,Width (px),Height (px)
@@ -56,17 +55,13 @@ DL,4.33,8.66,150,650,1299
 DL,4.33,8.66,300,1299,2598
 DL,4.33,8.66,600,2598,5197
 """
-
 # Load into DataFrame
 from io import StringIO
 df = pd.read_csv(StringIO(csv_data))
-
 # Extract unique paper sizes with dimensions
 paper_dimensions = df.groupby("Paper Size")[["Width (in)", "Height (in)"]].first().reset_index()
-
 # Create DPI values from 1 to 1200
 dpi_values = np.arange(1, 9001)
-
 # Generate new data
 generated_data = []
 for _, row in paper_dimensions.iterrows():
@@ -81,11 +76,8 @@ for _, row in paper_dimensions.iterrows():
             width_px,
             height_px
         ])
-
 # Create expanded DataFrame
 expanded_df = pd.DataFrame(generated_data, columns=["Paper Size", "Width (in)", "Height (in)", "DPI", "Width (px)", "Height (px)"])
-
 # Save to CSV if desired
 expanded_df.to_csv("uniform_data.csv", index=False)
-
 print(expanded_df.head())

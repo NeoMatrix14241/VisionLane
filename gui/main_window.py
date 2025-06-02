@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QPushButton, 
-                           QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, 
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QTabWidget, QPushButton,
+                           QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
                            QComboBox, QFileDialog, QMessageBox,
                            QLineEdit, QDialogButtonBox, QSpinBox, QCheckBox,
                            QFormLayout, QDialog, QProgressDialog, QSlider,
@@ -18,19 +18,15 @@ import time
 import configparser
 import shutil
 from pathlib import Path
-
 # Add project root to path
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
-
 # Now import project modules
 from core.ocr_processor import OCRProcessor
 from .processing_thread import OCRWorker
 from utils.process_manager import ProcessManager
-
 logger = logging.getLogger(__name__)
-
 class MainWindow(QMainWindow):
     def __init__(self):
         try:
@@ -49,19 +45,15 @@ class MainWindow(QMainWindow):
                     logger.info("GPUtil initialized as fallback")
                 except Exception as e:
                     logger.error(f"Failed to initialize GPUtil: {e}")
-
             logger.debug("Starting MainWindow initialization")
             super().__init__()
             logger.debug("MainWindow parent initialized")
-
             # Set window icon
             icon_path = str(Path(__file__).parent.parent / "icon.ico")
             self.setWindowIcon(QIcon(icon_path))
-            
             # Ensure window is visible
             self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
             self.setWindowState(Qt.WindowState.WindowActive)
-            
             # Initialize core components immediately
             self.selected_paths = {
                 'single': None,
@@ -73,14 +65,12 @@ class MainWindow(QMainWindow):
             self.process_manager = ProcessManager()
             self.thread_pool = QThreadPool()
             self.thread_pool.setMaxThreadCount(4)
-            
             # Don't create output directories until needed
             self.project_root = Path(__file__).parent.parent.resolve()
             self.output_base_dir = self.project_root / "data" / "output"  # Default path
             self.pdf_dir = None
             self.hocr_dir = None
             self.temp_dir = None
-            
             # Initialize progress tracking
             self.processed_files = 0
             self.total_files = 0
@@ -90,11 +80,9 @@ class MainWindow(QMainWindow):
             self.sync_timer = QTimer()
             self.sync_timer.timeout.connect(self._sync_progress)
             self.sync_timer.setInterval(500)  # Check every 500ms
-            
             # Add progress tracking variables
             self.last_valid_progress = 0
             self.max_processed = 0
-            
             # Add progress state tracking
             self.progress_state = {
                 'current_file': None,
@@ -102,7 +90,6 @@ class MainWindow(QMainWindow):
                 'actual_count': 0,
                 'last_sync': 0
             }
-            
             # Add file tracking
             self.file_tracking = {
                 'processed': set(),  # Track unique files processed
@@ -110,27 +97,21 @@ class MainWindow(QMainWindow):
                 'queued': set(),     # Track queued files
                 'current': None      # Current file being processed
             }
-            
             # Add direct file monitoring
             self.processed_files_set = set()  # Track actual processed files
             self.last_file_check = 0  # Last file check timestamp
-            
             # Add direct OCR monitoring
             self.last_ocr_check = 0
             self.real_file_count = 0
-            
             # Add progress monitoring
             self.progress_monitor = QTimer()
             self.progress_monitor.timeout.connect(self._check_real_progress)
             self.progress_monitor.setInterval(250)  # Check 4 times per second
-            
             # Add theme state
             self.theme_mode = "system"  # "system", "light", "dark", "night"
-            
             # Initialize GUI
             self.setWindowTitle("VisionLane OCR (Can't fix GUI so slow I wanna cry, disappear, and become a potato)")
             self.setMinimumSize(800, 450)
-            
             # Config parser for INI file
             self.config_path = self.project_root / "config.ini"
             self.config = configparser.ConfigParser()
@@ -141,15 +122,12 @@ class MainWindow(QMainWindow):
                 self._save_config()
             # Initialize OCR model
             QTimer.singleShot(0, lambda: self._delayed_init())
-            
             # Add last update time tracking
             self.last_progress_update = time.time()
             self.progress_update_delay = 1.0  # 1 second delay
-            
         except Exception as e:
             logger.error(f"Failed to initialize main window: {e}", exc_info=True)
             raise
-
     def _load_config(self):
         """Load settings from config.ini"""
         # Always use hardcoded defaults if config.ini is missing or does not contain the keys
@@ -186,7 +164,6 @@ class MainWindow(QMainWindow):
         operation_timeout = self.config.getint("Performance", "operation_timeout", fallback=600)
         chunk_timeout = self.config.getint("Performance", "chunk_timeout", fallback=60)
         # Models: detection_model and recognition_model already set above
-
         # Compression settings
         compress_enabled = self.config.getboolean("General", "compress_enabled", fallback=False)
         compression_type = self.config.get("General", "compression_type", fallback="jpeg")
@@ -196,7 +173,6 @@ class MainWindow(QMainWindow):
         archive_single = self.config.get("Paths", "archive_single", fallback="")
         archive_folder = self.config.get("Paths", "archive_folder", fallback="")
         archive_pdf = self.config.get("Paths", "archive_pdf", fallback="")
-
         self._config_values = {
             "dpi": dpi,
             "output_format": output_format,
@@ -221,13 +197,11 @@ class MainWindow(QMainWindow):
             "archive_folder": archive_folder,
             "archive_pdf": archive_pdf,
         }
-
     def _create_ui(self):
         """Create UI components"""
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QVBoxLayout(main_widget)
-        
         self._create_menu_bar()
         # Apply initial theme after menu bar is created
         self._apply_theme()
@@ -237,7 +211,6 @@ class MainWindow(QMainWindow):
         self._create_action_buttons(layout)
         # Restore config values to widgets after creation
         self._restore_config_to_widgets()
-
     def _restore_config_to_widgets(self):
         """Restore loaded config values to widgets"""
         v = self._config_values
@@ -316,14 +289,11 @@ class MainWindow(QMainWindow):
         if v.get("archive_pdf"):
             self.pdf_archive_dir.setText(v["archive_pdf"])
         # ...existing code...
-
     def _save_config(self):
         """Save all GUI settings to config.ini with proper section ordering"""
         # Create ordered config to ensure proper section sequence
         ordered_config = configparser.ConfigParser()
-        
         # Add sections in the desired order: General, Paths, Performance, Startup
-        
         # 1. General section
         ordered_config.add_section("General")
         ordered_config.set("General", "dpi", self.dpi_combo.currentText())
@@ -339,7 +309,6 @@ class MainWindow(QMainWindow):
             self.folder_archive_checkbox.isChecked() or
             self.pdf_archive_checkbox.isChecked()
         ))
-        
         # 2. Paths section
         ordered_config.add_section("Paths")
         ordered_config.set("Paths", "archive_single", self.single_archive_dir.text())
@@ -351,7 +320,6 @@ class MainWindow(QMainWindow):
         ordered_config.set("Paths", "output_single", self.single_output_path.text())
         ordered_config.set("Paths", "output_folder", self.folder_output_path.text())
         ordered_config.set("Paths", "output_pdf", self.pdf_output_path.text())
-        
         # 3. Performance section
         ordered_config.add_section("Performance")
         ordered_config.set("Performance", "thread_count", str(self.thread_pool.maxThreadCount()))
@@ -361,12 +329,11 @@ class MainWindow(QMainWindow):
         else:
             ordered_config.set("Performance", "operation_timeout", "600")
             ordered_config.set("Performance", "chunk_timeout", "60")
-        
         # 4. Startup section (preserve existing values or use defaults)
         ordered_config.add_section("Startup")
         startup_defaults = {
             'enable_parallel_loading': 'True',
-            'show_detailed_progress': 'True', 
+            'show_detailed_progress': 'True',
             'cache_validation_results': 'True',
             'skip_doctr_setup_check': 'False',
             'skip_model_validation': 'False',
@@ -377,7 +344,6 @@ class MainWindow(QMainWindow):
             'cache_expiry_hours': '24',
             'skip_system_diagnostics': 'False'
         }
-        
         # Preserve existing startup values if they exist
         if self.config.has_section('Startup'):
             for key, default_value in startup_defaults.items():
@@ -386,7 +352,6 @@ class MainWindow(QMainWindow):
         else:
             for key, value in startup_defaults.items():
                 ordered_config.set('Startup', key, value)
-        
         # Write to file with custom formatting to add warning comments
         try:
             with open(self.config_path, "w", encoding="utf-8") as f:
@@ -399,28 +364,21 @@ class MainWindow(QMainWindow):
                         f.write('# Modifying these values may cause application instability or startup failures.\n')
                         f.write('# Only change these settings if you understand the technical implications.\n')
                         f.write('# ============================================================================\n')
-                    
                     f.write(f'[{section_name}]\n')
-                    
                     for key, value in ordered_config.items(section_name):
                         f.write(f'{key} = {value}\n')
-                    
                     f.write('\n')  # Add blank line after each section
-                    
         except Exception as e:
             logger.error(f"Failed to save config: {e}")
-
     def show(self):
         """Override show to ensure window appears"""
         super().show()
         self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
         self.activateWindow()  # Force window activation
-
     def closeEvent(self, event):
         """Handle window close with proper thread cleanup"""
         try:
             self._save_config()
-            
             # Cancel any ongoing processing first
             if self.current_worker and self.current_worker.is_running:
                 self._cancel_processing()
@@ -428,29 +386,22 @@ class MainWindow(QMainWindow):
                 QApplication.processEvents()
                 import time
                 time.sleep(0.5)
-            
             # Stop all timers first
             self._stop_all_timers()
-            
             # Clean up OCR and resources
             self._cleanup_resources()
-            
             # Wait for thread pool to finish
             if hasattr(self, 'thread_pool'):
                 self.thread_pool.clear()
                 success = self.thread_pool.waitForDone(3000)  # Wait 3 seconds
                 if not success:
                     logger.warning("Thread pool didn't finish cleanly within timeout")
-            
             # Force cleanup processes and threads
             if hasattr(self, 'process_manager'):
                 self.process_manager.force_exit()
-            
             logger.info("Application cleanup completed successfully")
-            
             # Accept the close event
             event.accept()
-            
         except Exception as e:
             logger.error(f"Error during close: {e}")
             event.accept()  # Accept anyway to prevent hanging
@@ -462,10 +413,9 @@ class MainWindow(QMainWindow):
                 sys.exit(0)
             except:
                 os._exit(0)
-
     def _stop_all_timers(self):
         """Stop all timers safely"""
-        timer_names = ['hw_timer', 'update_timer', 'progress_timer', 
+        timer_names = ['hw_timer', 'update_timer', 'progress_timer',
                        'sync_timer', 'progress_monitor']
         for timer_name in timer_names:
             if hasattr(self, timer_name):
@@ -474,7 +424,6 @@ class MainWindow(QMainWindow):
                     timer.stop()
                     timer.deleteLater()
                     setattr(self, timer_name, None)
-
     def _cleanup_resources(self):
         """Clean up resources safely with thread termination"""
         try:
@@ -486,7 +435,6 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     logger.error(f"Error cleaning OCR temp files: {e}")
                 self.ocr = None
-                
             # Clean up current worker
             if hasattr(self, 'current_worker') and self.current_worker:
                 try:
@@ -495,7 +443,6 @@ class MainWindow(QMainWindow):
                     logger.info("Current worker cleaned up")
                 except Exception as e:
                     logger.error(f"Error cleaning current worker: {e}")
-                
             # Clean up thread pool with timeout
             if hasattr(self, 'thread_pool'):
                 try:
@@ -506,7 +453,6 @@ class MainWindow(QMainWindow):
                     logger.info("Thread pool cleaned up")
                 except Exception as e:
                     logger.error(f"Error cleaning thread pool: {e}")
-                
             # Clean up logging
             if hasattr(self, 'log_handler'):
                 try:
@@ -514,31 +460,25 @@ class MainWindow(QMainWindow):
                     logger.info("Log handler removed")
                 except Exception as e:
                     logger.error(f"Error removing log handler: {e}")
-                
             # Force garbage collection
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 logger.info("GPU cache cleared")
-                
         except Exception as e:
             logger.error(f"Error during resource cleanup: {e}")
-
     def cleanup_and_exit(self):
         """Ensure thorough cleanup before exit"""
         try:
             # Cancel processing and stop timers
             self._stop_all_timers()
-            
             # Clean up resources
             self._cleanup_resources()
-            
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
         finally:
             # Schedule deletion for next event loop iteration
             self.deleteLater()
-
     def _setup_logging(self):
         """Setup file-only logging"""
         logger = logging.getLogger()
@@ -547,17 +487,14 @@ class MainWindow(QMainWindow):
             logger.removeHandler(handler)
         # Only setup file handler, no GUI logging
         self._setup_file_logging()
-
     def _setup_file_logging(self):
         try:
             # Create logs directory
             log_dir = Path(__file__).parent.parent / "logs"
             log_dir.mkdir(exist_ok=True)
-            
             # Create log file with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.log_file = log_dir / f"ocr_gui_{timestamp}.log"
-            
             # Setup file handler with UTF-8 encoding
             file_handler = logging.FileHandler(self.log_file, encoding='utf-8')
             file_handler.setLevel(logging.DEBUG)
@@ -566,28 +503,22 @@ class MainWindow(QMainWindow):
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
             file_handler.setFormatter(formatter)
-            
             # Get logger
             logger = logging.getLogger()
-
             # --- FIX: Remove all existing handlers before adding new file handler ---
             for handler in logger.handlers[:]:
                 handler.close()
                 logger.removeHandler(handler)
-
             # Add new handler
             logger.addHandler(file_handler)
             logger.setLevel(logging.DEBUG)
             logger.info("=== New OCR Processing Session Started ===")
             logger.info(f"Log file: {self.log_file}")
-
         except Exception as e:
             logger.error(f"Failed to setup logging: {e}", exc_info=True)
             print(f"Failed to setup logging: {e}")
-
     def _create_menu_bar(self):
         menubar = self.menuBar()
-        
         # File menu
         file_menu = menubar.addMenu("File")
         open_action = file_menu.addAction("Open")
@@ -596,14 +527,12 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self._on_open_file)
         save_action.triggered.connect(self._save_settings)
         file_menu.addAction("Exit")
-
         # Settings menu
         settings_menu = menubar.addMenu("Settings")
         path_config_action = settings_menu.addAction("Configure Paths")
         performance_options = settings_menu.addAction("Performance Options")
         path_config_action.triggered.connect(self._show_path_config)
         performance_options.triggered.connect(self._show_performance_options)
-
         # Theme menu
         theme_menu = menubar.addMenu("Theme")
         self.action_theme_system = theme_menu.addAction("System Default")
@@ -621,16 +550,13 @@ class MainWindow(QMainWindow):
             self.action_theme_night
         ]
         self.action_theme_system.setChecked(True)
-
         self.action_theme_system.triggered.connect(lambda: self._set_theme_mode("system"))
         self.action_theme_light.triggered.connect(lambda: self._set_theme_mode("light"))
         self.action_theme_dark.triggered.connect(lambda: self._set_theme_mode("dark"))
         self.action_theme_night.triggered.connect(lambda: self._set_theme_mode("night"))
-
         # Help menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About").triggered.connect(self._show_about)
-
     def _set_theme_mode(self, mode):
         """Set theme mode: system, light, dark, or night"""
         self.theme_mode = mode
@@ -640,7 +566,6 @@ class MainWindow(QMainWindow):
         self.action_theme_dark.setChecked(mode == "dark")
         self.action_theme_night.setChecked(mode == "night")
         self._apply_theme()
-
     def _apply_theme(self):
         """Apply the current theme to the application (System, Light, Dark, or Night Mode)"""
         if self.theme_mode == "night":
@@ -751,21 +676,18 @@ class MainWindow(QMainWindow):
         else:
             # System default: clear stylesheet, let OS/PyQt6 decide
             self.setStyleSheet("")
-
     def _create_input_section(self, parent_layout):
         self.tab_widget = QTabWidget()
         self.tab_widget.setMaximumHeight(200)  # Limit tab height
-
         label_style = "QLabel { font-size: 10pt; padding: 5px; }"
         btn_style = """
-            QPushButton { 
-                font-size: 10pt; 
+            QPushButton {
+                font-size: 10pt;
                 padding: 1px 10px;
                 min-height: 25px;
                 max-height: 30px;
             }
         """
-
         # --- Helper for grid-aligned tab ---
         def create_tab(title, select_btn_text):
             widget = QWidget()
@@ -773,7 +695,6 @@ class MainWindow(QMainWindow):
             grid.setContentsMargins(15, 15, 15, 15)
             grid.setHorizontalSpacing(8)
             grid.setVerticalSpacing(8)
-
             # Input selection row
             select_btn = QPushButton(select_btn_text)
             select_btn.setStyleSheet(btn_style)
@@ -786,7 +707,6 @@ class MainWindow(QMainWindow):
             label.setMinimumHeight(32)
             grid.addWidget(select_btn, 0, 0)
             grid.addWidget(label, 0, 1, 1, 2)
-
             # Output selection row
             output_path = QLineEdit()
             output_path.setPlaceholderText("Output directory")
@@ -799,7 +719,6 @@ class MainWindow(QMainWindow):
             grid.addWidget(QLabel("Output:"), 1, 0)
             grid.addWidget(output_path, 1, 1)
             grid.addWidget(browse_btn, 1, 2)
-
             # Archive row below output directory row
             archive_checkbox = QCheckBox("Archiving?")
             archive_dir = QLineEdit()
@@ -813,7 +732,6 @@ class MainWindow(QMainWindow):
             grid.addWidget(archive_checkbox, 2, 0)
             grid.addWidget(archive_dir, 2, 1)
             grid.addWidget(archive_browse_btn, 2, 2)
-
             # --- Archive checkbox logic: relative to output dir ---
             def on_archive_checked(state):
                 enabled = state == 2  # 2 == Checked
@@ -827,23 +745,19 @@ class MainWindow(QMainWindow):
             archive_checkbox.stateChanged.connect(on_archive_checked)
             # Set initial state
             on_archive_checked(archive_checkbox.checkState())
-
             # --- Output browse updates archive dir if checked ---
             def on_output_changed(text):
                 if archive_checkbox.isChecked():
                     archive_dir.setText(str(Path(text) / "archive"))
             output_path.textChanged.connect(on_output_changed)
-
             # Store references for later use
             widget._archive_checkbox = archive_checkbox
             widget._archive_dir = archive_dir
             widget._archive_browse_btn = archive_browse_btn
             widget._output_path = output_path
-
             # Add stretch at the bottom
             grid.setRowStretch(3, 1)
             return widget, select_btn, label, output_path, browse_btn, archive_checkbox, archive_dir, archive_browse_btn
-
         # Single File tab
         single_widget, select_file_btn, self.single_file_label, self.single_output_path, single_browse_btn, \
             self.single_archive_checkbox, self.single_archive_dir, self.single_archive_browse_btn = create_tab(
@@ -853,7 +767,6 @@ class MainWindow(QMainWindow):
         single_browse_btn.clicked.connect(lambda: self._browse_output(self.single_output_path))
         self.single_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.single_archive_dir))
         self.tab_widget.addTab(single_widget, "Single File")
-
         # Folder tab
         folder_widget, select_folder_btn, self.folder_label, self.folder_output_path, folder_browse_btn, \
             self.folder_archive_checkbox, self.folder_archive_dir, self.folder_archive_browse_btn = create_tab(
@@ -863,7 +776,6 @@ class MainWindow(QMainWindow):
         folder_browse_btn.clicked.connect(lambda: self._browse_output(self.folder_output_path))
         self.folder_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.folder_archive_dir))
         self.tab_widget.addTab(folder_widget, "Folder")
-
         # PDF tab
         pdf_widget, select_pdf_btn, self.pdf_label, self.pdf_output_path, pdf_browse_btn, \
             self.pdf_archive_checkbox, self.pdf_archive_dir, self.pdf_archive_browse_btn = create_tab(
@@ -873,10 +785,8 @@ class MainWindow(QMainWindow):
         pdf_browse_btn.clicked.connect(lambda: self._browse_output(self.pdf_output_path))
         self.pdf_archive_browse_btn.clicked.connect(lambda: self._browse_output(self.pdf_archive_dir))
         self.tab_widget.addTab(pdf_widget, "PDF")
-
         # Add tab widget to parent layout
         parent_layout.addWidget(self.tab_widget)
-
         # Restore config values for input/output paths and update labels
         v = getattr(self, "_config_values", {})
         # Single file
@@ -897,7 +807,6 @@ class MainWindow(QMainWindow):
             self.pdf_label.setText(f"Selected: {Path(v['last_pdf']).name}")
         if v.get("last_output_pdf"):
             self.pdf_output_path.setText(v["last_output_pdf"])
-
     def _browse_output(self, line_edit):
         """Handle output directory selection"""
         dir_path = QFileDialog.getExistingDirectory(
@@ -908,7 +817,6 @@ class MainWindow(QMainWindow):
         if dir_path:
             # Update output path in UI
             line_edit.setText(dir_path)
-            
             # Update OCR processor paths if it exists
             if hasattr(self, 'ocr'):
                 self.ocr.output_base_dir = Path(dir_path)
@@ -917,7 +825,6 @@ class MainWindow(QMainWindow):
                 self.pdf_dir = self.ocr.pdf_dir
                 self.hocr_dir = self.ocr.hocr_dir
                 self.temp_dir = self.ocr.temp_dir
-
     def _select_single_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -928,7 +835,6 @@ class MainWindow(QMainWindow):
         if file_path:
             self.selected_paths['single'] = Path(file_path)
             self.single_file_label.setText(f"Selected: {Path(file_path).name}")
-
     def _select_folder(self):
         folder_path = QFileDialog.getExistingDirectory(
             self,
@@ -944,7 +850,6 @@ class MainWindow(QMainWindow):
                     f"Selected: {folder_path}\n"
                     f"Found: {supported_files['images']} images, {supported_files['pdfs']} PDFs"
                 )
-
     def _select_pdf(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -955,13 +860,11 @@ class MainWindow(QMainWindow):
         if file_path:
             self.selected_paths['pdf'] = Path(file_path)
             self.pdf_label.setText(f"Selected: {Path(file_path).name}")
-
     def _count_supported_files(self, folder_path: str) -> dict:
         folder = Path(folder_path)
         image_extensions = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
         images = 0
         pdfs = 0
-        
         # Recursively scan for files
         for path in folder.rglob('*'):
             if path.is_file():
@@ -969,9 +872,7 @@ class MainWindow(QMainWindow):
                     images += 1
                 elif path.suffix.lower() == '.pdf':
                     pdfs += 1
-                    
         return {"images": images, "pdfs": pdfs}
-
     def _create_options_section(self, parent_layout):
         # DPI + Output Format row
         options_layout1 = QHBoxLayout()
@@ -982,41 +883,34 @@ class MainWindow(QMainWindow):
         self.dpi_combo.setCurrentIndex(0)  # Always default to "Auto"
         options_layout1.addWidget(QLabel("DPI:"))
         options_layout1.addWidget(self.dpi_combo)
-
         self.format_combo = QComboBox()
         self.format_combo.addItems(["PDF", "HOCR", "PDF+HOCR"])
         options_layout1.addWidget(QLabel("Output Format:"))
         options_layout1.addWidget(self.format_combo)
         parent_layout.addLayout(options_layout1)
-
         # Detection Model + Recognition Model row
         options_layout2 = QHBoxLayout()
         self.det_model_combo = QComboBox()
         options_layout2.addWidget(QLabel("Detection Model:"))
         options_layout2.addWidget(self.det_model_combo)
-
         self.rec_model_combo = QComboBox()
         options_layout2.addWidget(QLabel("Recognition Model:"))
         options_layout2.addWidget(self.rec_model_combo)
         parent_layout.addLayout(options_layout2)
-
         # Only download the default models from config.ini at startup
         self._populate_model_dropdowns(download_missing="startup")
         self.det_model_combo.currentIndexChanged.connect(self._on_det_model_change)
         self.rec_model_combo.currentIndexChanged.connect(self._on_rec_model_change)
-
         # --- Compression Options (move below model selection) ---
         compression_layout = QHBoxLayout()
         self.compress_checkbox = QCheckBox("Compress with PyPDFCompressor")
         compression_layout.addWidget(self.compress_checkbox)
-
         self.compression_type_combo = QComboBox()
         self.compression_type_combo.addItems(["JPEG", "JPEG2000", "LZW", "PNG"])
         self.compression_type_combo.setEnabled(False)
         self.compression_type_combo.setCurrentIndex(0)  # Default to JPEG
         compression_layout.addWidget(QLabel("Type:"))
         compression_layout.addWidget(self.compression_type_combo)
-
         self.quality_slider = QSlider(Qt.Orientation.Horizontal)
         self.quality_slider.setMinimum(0)
         self.quality_slider.setMaximum(100)
@@ -1025,21 +919,17 @@ class MainWindow(QMainWindow):
         self.quality_slider.setFixedWidth(120)
         compression_layout.addWidget(QLabel("Quality:"))
         compression_layout.addWidget(self.quality_slider)
-
         # Add dynamic label for quality percent
         self.quality_label = QLabel("100%")
         self.quality_label.setFixedWidth(40)
         compression_layout.addWidget(self.quality_label)
-
         # Add info button for Ghostscript status
         from PyQt6.QtWidgets import QPushButton  # Ensure QPushButton is imported
-
         self.compression_info_button = QPushButton("Unavailable: Learn More?")
         self.compression_info_button.setVisible(False)
         self.compression_info_button.setFixedHeight(24)
         self.compression_info_button.setStyleSheet("QPushButton { color: #0078d7; border: none; background: transparent; text-decoration: underline; }")
         compression_layout.addWidget(self.compression_info_button)
-
         # Remove the old info icon
         # self.compression_info_icon = QLabel()
         # info_pix = QPixmap(16, 16)
@@ -1047,12 +937,9 @@ class MainWindow(QMainWindow):
         # self.compression_info_icon.setPixmap(info_pix)
         # self.compression_info_icon.setVisible(False)
         # compression_layout.addWidget(self.compression_info_icon)
-
         parent_layout.addLayout(compression_layout)
-
         # --- Ghostscript check and UI update ---
         import re
-
         def check_ghostscript():
             # Windows: gswin64c.exe, Linux/Mac: gs
             if sys.platform.startswith("win"):
@@ -1088,7 +975,6 @@ class MainWindow(QMainWindow):
                 if gs_path:
                     return True, gs_path
                 return False, None
-
         def show_ghostscript_dialog():
             msg = QMessageBox(self)
             msg.setWindowTitle("Ghostscript Required")
@@ -1104,9 +990,7 @@ class MainWindow(QMainWindow):
             # Enable clickable links
             msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
             msg.exec()
-
         self.compression_info_button.clicked.connect(show_ghostscript_dialog)
-
         def update_compression_controls():
             gs_found, gs_path = check_ghostscript()
             enabled = self.compress_checkbox.isChecked() and gs_found
@@ -1129,20 +1013,16 @@ class MainWindow(QMainWindow):
                 self.compression_info_button.setVisible(False)
                 # Optionally, store gs_path for use in compression logic
                 self._gs_executable_path = gs_path
-
         self.compress_checkbox.stateChanged.connect(update_compression_controls)
         self.compression_type_combo.currentIndexChanged.connect(update_compression_controls)
         self.quality_slider.valueChanged.connect(lambda v: self.quality_label.setText(f"{v}%"))
         self.quality_slider.valueChanged.connect(update_compression_controls)
-
         # --- Ensure controls are initialized correctly on startup ---
         update_compression_controls()
-
         # Only download the default models from config.ini at startup
         self._populate_model_dropdowns(download_missing="startup")
         self.det_model_combo.currentIndexChanged.connect(self._on_det_model_change)
         self.rec_model_combo.currentIndexChanged.connect(self._on_rec_model_change)
-
     def _populate_model_dropdowns(self, download_missing=False):
         """
         Populate detection/recognition model dropdowns with available models and download status.
@@ -1173,7 +1053,6 @@ class MainWindow(QMainWindow):
         def model_exists(name):
             # Only match the model name exactly (not startswith), to avoid duplicates
             return any(p.name.split('-')[0] == name for p in cache_dir.glob("*.pt"))
-
         # --- Only download the default models from config.ini or hardcoded defaults at startup ---
         if download_missing == "startup":
             det_model = self._config_values.get("detection_model") or "db_resnet50"
@@ -1206,14 +1085,11 @@ class MainWindow(QMainWindow):
                         getattr(doctr_models.recognition, key)(pretrained=True)
                     except Exception:
                         pass
-
         # --- Prevent duplicate items in dropdowns ---
         self.det_model_combo.clear()
         self.rec_model_combo.clear()
-
         self._det_model_needs_download = {}
         self._rec_model_needs_download = {}
-
         # Add detection models (no duplicates)
         added_det = set()
         for key in det_models:
@@ -1224,7 +1100,6 @@ class MainWindow(QMainWindow):
             self._det_model_needs_download[key] = not exists
             display = key + ("" if exists else " ⬇️")
             self.det_model_combo.addItem(display, key)
-
         # Add recognition models (no duplicates)
         added_rec = set()
         for key in rec_models:
@@ -1235,7 +1110,6 @@ class MainWindow(QMainWindow):
             self._rec_model_needs_download[key] = not exists
             display = key + ("" if exists else " ⬇️")
             self.rec_model_combo.addItem(display, key)
-
         # Remove any duplicate entries by checking all items after adding
         def remove_duplicates(combo):
             seen = set()
@@ -1251,7 +1125,6 @@ class MainWindow(QMainWindow):
                 combo.removeItem(i)
         remove_duplicates(self.det_model_combo)
         remove_duplicates(self.rec_model_combo)
-
         # Set default selection to db_resnet50 and parseq if present
         det_idx = self.det_model_combo.findData(self._config_values.get("detection_model", "db_resnet50"))
         if det_idx < 0:
@@ -1263,7 +1136,6 @@ class MainWindow(QMainWindow):
             rec_idx = self.rec_model_combo.findData("parseq")
         if rec_idx >= 0:
             self.rec_model_combo.setCurrentIndex(rec_idx)
-
         # Connect to custom handler for download logic
         try:
             self.det_model_combo.currentIndexChanged.disconnect()
@@ -1275,7 +1147,6 @@ class MainWindow(QMainWindow):
             pass
         self.det_model_combo.currentIndexChanged.connect(self._on_det_model_change)
         self.rec_model_combo.currentIndexChanged.connect(self._on_rec_model_change)
-
     def _on_det_model_change(self, idx):
         key = self.det_model_combo.itemData(idx)
         # Only prompt/download for the selected detection model, not all
@@ -1290,7 +1161,6 @@ class MainWindow(QMainWindow):
                 self.det_model_combo.setCurrentIndex(idx_new)
                 self.det_model_combo.blockSignals(False)
         self._on_model_change()
-
     def _on_rec_model_change(self, idx):
         key = self.rec_model_combo.itemData(idx)
         # Only prompt/download for the selected recognition model, not all
@@ -1305,7 +1175,6 @@ class MainWindow(QMainWindow):
                 self.rec_model_combo.setCurrentIndex(idx_new)
                 self.rec_model_combo.blockSignals(False)
         self._on_model_change()
-
     # Add this method for compatibility with model change handlers
     def _on_model_change(self, *args, **kwargs):
         """Update OCR processor with current model selections."""
@@ -1313,7 +1182,6 @@ class MainWindow(QMainWindow):
             det_model = self.det_model_combo.currentData()
             rec_model = self.rec_model_combo.currentData()
             self.ocr.set_models(det_model, rec_model)
-
     def _download_model_no_dialog(self, model_key, model_type):
         """
         Download the specified model without any confirmation or completion dialogs.
@@ -1340,15 +1208,12 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Download Failed", f"Failed to download model '{model_key}':\n{e}")
         finally:
             progress.close()
-
     def _create_status_section(self, parent_layout):
         """Create minimal status section with file status and overall progress"""
         status_layout = QVBoxLayout()
-        
         # Current file label
         self.current_file_label = QLabel("No file processing")
         status_layout.addWidget(self.current_file_label)
-        
         # Overall progress
         self.overall_progress_label = QLabel("Total Progress: 0/0")
         self.overall_progress = QProgressBar()
@@ -1356,45 +1221,34 @@ class MainWindow(QMainWindow):
         progress_layout.addWidget(self.overall_progress_label)
         progress_layout.addWidget(self.overall_progress)
         status_layout.addLayout(progress_layout)
-        
         # Hardware info layout
         hw_layout = QHBoxLayout()
         self.device_label = QLabel()
         self.cpu_label = QLabel()
         self.memory_label = QLabel()
-        
         for label in [self.device_label, self.cpu_label, self.memory_label]:
             hw_layout.addWidget(label)
             label.setStyleSheet("padding: 5px; margin: 2px;")
-        
         status_layout.addLayout(hw_layout)
         parent_layout.addLayout(status_layout)
-
     def _create_action_buttons(self, parent_layout):
         button_layout = QHBoxLayout()
-        
         # Add buttons
         self.start_button = QPushButton("Start Processing")
         self.start_button.clicked.connect(self._start_processing)
-        
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self._cancel_processing)
         self.cancel_button.setEnabled(False)
-        
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.cancel_button)
-        
         parent_layout.addLayout(button_layout)
-
     def _cancel_processing(self):
         """Fixed cancel processing dialog sequence"""
         if not self.current_worker:
             return
-            
         try:
             self.start_button.setEnabled(False)
             self.cancel_button.setEnabled(False)
-            
             # Use a single persistent dialog
             dialog = QMessageBox(self)
             dialog.setIcon(QMessageBox.Icon.Warning)
@@ -1404,31 +1258,25 @@ class MainWindow(QMainWindow):
             dialog.setStandardButtons(QMessageBox.StandardButton.NoButton)
             dialog.show()
             QApplication.processEvents()
-            
             # Do cleanup
             self._cleanup_processing(dialog)
-            
             # Update dialog text and show completion
             dialog.setText("Processing terminated successfully")
             dialog.setIcon(QMessageBox.Icon.Information)
             dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
             dialog.exec()  # Wait for user to click OK
-            
             # Final cleanup after user clicks OK
             dialog.deleteLater()
             QApplication.processEvents()
-            
         except Exception as e:
             logger.error(f"Error in cancel_processing: {e}")
             self._reset_processing_state()
-
     def _cleanup_processing(self, dialog):
         """Handle cleanup with better temp file handling"""
         try:
             if self.current_worker:
                 self.current_worker.stop(force=True)
                 self.current_worker = None
-            
             # Cancel OCR and clean temp files
             if hasattr(self, 'ocr'):
                 self.ocr.cancel_processing()
@@ -1445,7 +1293,6 @@ class MainWindow(QMainWindow):
                     logger.info(f"Cleaned up {temp_files_cleaned} temp files")
                 except Exception as e:
                     logger.error(f"Error cleaning temp files: {e}")
-            
             # Clear thread pool
             if hasattr(self, 'thread_pool'):
                 self.thread_pool.clear()
@@ -1454,23 +1301,18 @@ class MainWindow(QMainWindow):
                     logger.info("Thread pool stopped successfully")
                 else:
                     logger.warning("Thread pool stop timeout")
-            
             # Reset state but preserve progress
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
-            
             # Force cleanup
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                
             logger.info("Processing cleanup completed successfully")
-            
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
         finally:
             QApplication.processEvents()
-
     def _reset_processing_state(self):
         """Reset UI state completely"""
         try:
@@ -1481,30 +1323,23 @@ class MainWindow(QMainWindow):
                 self.progress_timer.stop()
             if hasattr(self, 'progress_monitor'):
                 self.progress_monitor.stop();
-            
             # Reset progress counters
             self.processed_files = 0
             self.total_files = 0
             self.last_progress = 0
-            
             # Reset UI labels to initial state
             self.current_file_label.setText("No file processing")
             self.overall_progress_label.setText("Total Progress: 0/0")
             self.overall_progress.setValue(0)
-            
             # Reset file tracking
             self.file_tracking['current'] = None
             self.file_tracking['processed'].clear()
-            
             # Reset buttons
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
-            
             QApplication.processEvents()
-            
         except Exception as e:
             logger.error(f"Error in reset_processing_state: {e}")
-
     def _process_finished(self, success):
         """Handle process completion"""
         try:
@@ -1513,46 +1348,37 @@ class MainWindow(QMainWindow):
             self.progress_monitor.stop()
             self.update_timer.stop()
             self.progress_timer.stop()
-            
             # Keep progress visible while showing completion message
             if success and not self.ocr.is_cancelled:
                 # Show completion message and wait for user response
                 QMessageBox.information(self, "Success", "Processing completed successfully!")
-            
             # --- Refresh folder label after process finished (for folder tab) ---
             if self.tab_widget.currentIndex() == 1:
                 self._refresh_folder_label()
-            
             # Only reset the state after user has seen completion message
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
             self.current_file_label.setText("No file processing")
-            self.overall_progress_label.setText("Total Progress: 0/0") 
+            self.overall_progress_label.setText("Total Progress: 0/0")
             self.overall_progress.setValue(0)
-            
             # Clear internal state
             self.processed_files = 0
             self.total_files = 0
             self.last_progress = 0
             self.file_tracking['current'] = None
             self.file_tracking['processed'].clear()
-            
             QApplication.processEvents()
-            
         except Exception as e:
             logger.error(f"Error during process completion: {e}")
             self._reset_processing_state()
-
     def _update_gui(self):
         """Update GUI elements without blocking"""
         QApplication.processEvents()
-
     def _sync_progress(self):
         """Enhanced progress sync with real-time file counting"""
         try:
             if not self.current_worker or not self.current_worker.is_running:
                 return
-
             # Update current file display first
             if hasattr(self.ocr, 'current_file') and self.ocr.current_file:
                 current = Path(self.ocr.current_file)
@@ -1561,7 +1387,6 @@ class MainWindow(QMainWindow):
                     self._last_displayed_file = current.name
                     logger.debug(f"Showing current file: {current.name}")
                     QApplication.processEvents()
-
             # Only update progress when files are actually completed
             if hasattr(self.ocr, '_processed_files'):
                 real_count = len(self.ocr._processed_files)
@@ -1574,10 +1399,8 @@ class MainWindow(QMainWindow):
                         self.overall_progress_label.setText(f"Files Processed: {real_count}/{self.total_files}")
                         logger.debug(f"Updated progress: {real_count}/{self.total_files}")
                         QApplication.processEvents()
-            
         except Exception as e:
             logger.error(f"Error in sync_progress: {e}")
-
     def _verify_file_completion(self, filepath):
         """Verify both HOCR and PDF exist for the file"""
         if not filepath:
@@ -1594,7 +1417,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error verifying file completion: {e}")
             return False
-
     def _start_processing(self):
         """Start processing with improved error handling and archiving support"""
         try:
@@ -1606,17 +1428,14 @@ class MainWindow(QMainWindow):
                 self.ocr.compress_enabled = self.compress_checkbox.isChecked()
                 self.ocr.compression_type = self.compression_type_combo.currentText().lower()
                 self.ocr.compression_quality = self.quality_slider.value()
-
             # Check if already processing
             if self.current_worker and self.current_worker.is_running:
                 QMessageBox.warning(self, "Warning", "Processing already in progress")
                 return
-
             # Get processing parameters and count files first
             current_tab = self.tab_widget.currentIndex()
             mode, path = self._get_processing_params(current_tab)
             self.total_files = self._get_total_files(path, mode)
-
             # Store the list of files to process for progress display
             if mode == 'folder':
                 image_exts = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.dib', '.jpe', '.jiff', '.heic']
@@ -1630,7 +1449,6 @@ class MainWindow(QMainWindow):
                 logger.info(f"Files to process: {len(self._files_to_process)} ({len(files)} images + {len(pdfs)} PDFs)")
             else:
                 self._files_to_process = [path]
-            
             # --- Archiving logic ---
             archive_enabled = False
             archive_dir = None
@@ -1643,7 +1461,6 @@ class MainWindow(QMainWindow):
             elif current_tab == 2:  # PDF
                 archive_enabled = self.pdf_archive_checkbox.isChecked()
                 archive_dir = self.pdf_archive_dir.text().strip()
-
             # Validate archive path if archiving is enabled
             if archive_enabled:
                 if not archive_dir:
@@ -1659,22 +1476,18 @@ class MainWindow(QMainWindow):
                         logger.error(f"Failed to create archive directory: {e}")
                         QMessageBox.critical(self, "Archiving Error", f"Failed to create archive directory:\n{e}")
                         return
-
             # Reset state before starting
             self.processed_files = 0
             self.last_progress = 0
             self.max_processed = 0
             self._last_displayed_file = None
-
             self.current_file_label.setText("Starting processing...")
             self.overall_progress_label.setText(f"Files Processed: 0/{self.total_files}")
             self.overall_progress.setValue(0)
             QApplication.processEvents()
-            
             if hasattr(self, 'ocr'):
                 self.ocr.reset_state()
                 self.ocr._processed_files.clear()
-
             self.current_worker = OCRWorker(self.ocr, mode, path)
             # ...existing signal connections...
             try:
@@ -1682,21 +1495,17 @@ class MainWindow(QMainWindow):
                 self.current_worker.signals.error.connect(self._handle_error)
                 self.current_worker.signals.cancelled.connect(self._on_cancelled)
                 self.current_worker.signals.finished.connect(self._process_finished)
-
                 self.start_button.setEnabled(False)
                 self.cancel_button.setEnabled(True)
                 self.overall_progress.setValue(0)
-
                 self.progress_monitor.start()
                 self.sync_timer.start()
-
                 logger.info(f"Starting processing: mode={mode}, path={path}")
                 self.thread_pool.start(self.current_worker)
             except Exception as e:
                 logger.error(f"Failed to connect worker signals: {e}")
                 self._handle_error(f"Failed to start processing: {e}")
                 self.current_worker = None
-
             # --- After processing, perform archiving if enabled ---
             if archive_enabled:
                 try:
@@ -1729,7 +1538,6 @@ class MainWindow(QMainWindow):
                         except Exception as e:
                             logger.error(f"Archiving error: {e}")
                             QMessageBox.critical(self, "Archiving Error", f"Failed to archive files:\n{e}")
-
                     def on_finished(success):
                         if success and not self.ocr.is_cancelled:
                             logger.info("Processing finished successfully, starting archiving.")
@@ -1746,7 +1554,6 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     logger.error(f"Archiving setup error: {e}")
                     QMessageBox.critical(self, "Archiving Error", f"Failed to setup archiving:\n{e}")
-
             else:
                 # --- If not archiving, still refresh after processing ---
                 def on_finished_no_archive(success):
@@ -1761,7 +1568,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error starting processing: {e}", exc_info=True)
             self._handle_error(str(e))
-
     def _get_processing_params(self, tab_index: int) -> tuple:
         """Get processing mode and path based on selected tab"""
         # Add output format handling
@@ -1773,7 +1579,6 @@ class MainWindow(QMainWindow):
             output_formats = ["hocr"]
         else:  # PDF+HOCR
             output_formats = ["pdf", "hocr"]
-            
         if tab_index == 0:  # Single File
             if not self.selected_paths['single']:
                 raise ValueError("Please select an image file")
@@ -1793,7 +1598,6 @@ class MainWindow(QMainWindow):
                     dpi_value = None
             self.ocr.dpi = dpi_value  # Pass DPI to OCRProcessor
             return 'single', self.selected_paths['single']
-            
         elif tab_index == 1:  # Folder
             if not self.selected_paths['folder']:
                 raise ValueError("Please select a folder")
@@ -1813,7 +1617,6 @@ class MainWindow(QMainWindow):
             path = self.selected_paths['folder']
             self.ocr.input_path = path
             return 'folder', path
-            
         else:  # PDF
             if not self.selected_paths['pdf']:
                 raise ValueError("Please select a PDF file")
@@ -1831,7 +1634,6 @@ class MainWindow(QMainWindow):
                     dpi_value = None
             self.ocr.dpi = dpi_value
             return 'pdf', self.selected_paths['pdf']
-
     def _get_total_files(self, path: Path, mode: str) -> int:
         """Get total number of files to process"""
         try:
@@ -1849,28 +1651,23 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error counting files: {e}")
             return 0
-
     def _on_cancelled(self):
         """Handle cancellation from worker"""
         logger.info("Processing cancelled")
         self._reset_processing_state()
-
     def _force_progress_update(self):
         """Force GUI update for overall progress"""
         self.overall_progress.repaint()
         self.overall_progress_label.repaint()
         QApplication.processEvents()
-
     def _update_current_file(self, filepath: str):
         """Update current file display"""
         filename = Path(filepath).name
         self.current_file_label.setText(f"Processing: {filename}")
         QApplication.processEvents()
-
     def _append_log(self, message):
         """No longer display logs in GUI"""
         pass  # Simply log to file, not to GUI
-
     def _update_overall_progress(self, current_file, total_files, file_progress):
         """Update progress with live file display"""
         try:
@@ -1888,14 +1685,11 @@ class MainWindow(QMainWindow):
                         self.current_file_label.setText("Processing...")
                 else:
                     self.current_file_label.setText("Processing...")
-
             # Update progress counts with proper total_files value
             self.processed_files = current_file
-            
             # Ensure we use the correct total count
             if total_files > 0:
                 self.total_files = total_files
-            
             # Calculate and update progress
             if self.total_files > 0:
                 progress = int((current_file / self.total_files) * 100)
@@ -1904,13 +1698,10 @@ class MainWindow(QMainWindow):
                     f"Files Processed: {current_file}/{self.total_files}"
                 )
                 logger.debug(f"Progress updated: {current_file}/{self.total_files} ({progress}%)")
-            
             # Force GUI update
             QApplication.processEvents()
-            
         except Exception as e:
             logger.error(f"Error updating progress: {e}")
-
     def _refresh_folder_label(self):
         """Update the folder label with the current count of images and PDFs."""
         folder_path = self.selected_paths.get('folder')
@@ -1925,7 +1716,6 @@ class MainWindow(QMainWindow):
                 self.folder_label.setText(f"Selected: {folder_path}")
         else:
             self.folder_label.setText("No folder selected")
-
     def _process_finished(self, success):
         """Handle process completion"""
         try:
@@ -1934,47 +1724,37 @@ class MainWindow(QMainWindow):
             self.progress_monitor.stop()
             self.update_timer.stop()
             self.progress_timer.stop()
-            
             # Keep progress visible while showing completion message
             if success and not self.ocr.is_cancelled:
                 # Show completion message and wait for user response
                 QMessageBox.information(self, "Success", "Processing completed successfully!")
-            
             # --- Refresh folder label after process finished (for folder tab) ---
             if self.tab_widget.currentIndex() == 1:
                 self._refresh_folder_label()
-            
             # Only reset the state after user has seen completion message
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
             self.current_file_label.setText("No file processing")
-            self.overall_progress_label.setText("Total Progress: 0/0") 
+            self.overall_progress_label.setText("Total Progress: 0/0")
             self.overall_progress.setValue(0)
-            
             # Clear internal state
             self.processed_files = 0
             self.total_files = 0
             self.last_progress = 0
             self.file_tracking['current'] = None
             self.file_tracking['processed'].clear()
-            
             QApplication.processEvents()
-            
         except Exception as e:
             logger.error(f"Error during process completion: {e}")
             self._reset_processing_state()
-
     def _update_hardware_info(self):
         """Update hardware info display with better error handling and GPU memory tracking"""
         try:
             if hasattr(self, 'ocr'):
                 device = getattr(self.ocr, 'device', 'cpu')  # Default to CPU if device not set
-                
                 # GPU Mode
                 if device == "cuda" and torch.cuda.is_available():
                     self.device_label.setText("Processing Device: GPU")
-                    
-
                     try:
                         # Try NVML first
                         if self.nvml_initialized:
@@ -1982,14 +1762,11 @@ class MainWindow(QMainWindow):
                             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                             util_rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
                             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                            
                             gpu_util = util_rates.gpu if util_rates else 0
                             used_mb = mem_info.used / (1024*1024)
                             total_mb = mem_info.total / (1024*1024)
-                            
                             self.cpu_label.setText(f"GPU Usage: {gpu_util}%")
                             self.memory_label.setText(f"GPU Memory: {used_mb:.0f}MB/{total_mb:.0f}MB")
-                        
                         # Try GPUtil as fallback
                         else:
                             import GPUtil
@@ -2002,7 +1779,6 @@ class MainWindow(QMainWindow):
                                 )
                             else:
                                 raise RuntimeError("No GPU detected by GPUtil")
-                                
                     except Exception:
                         # Fallback to basic PyTorch info
                         try:
@@ -2014,7 +1790,6 @@ class MainWindow(QMainWindow):
                             self.cpu_label.setText("GPU Usage: Error")
                             self.memory_label.setText("GPU Memory: Error")
                             logger.error(f"Failed to get GPU metrics: {e}")
-                
                 # CPU Mode
                 else:
                     self.device_label.setText("Processing Device: CPU")
@@ -2027,40 +1802,32 @@ class MainWindow(QMainWindow):
                         logger.error(f"Failed to get CPU metrics: {e}")
                         self.cpu_label.setText("CPU Usage: Error")
                         self.memory_label.setText("Memory: Error")
-                        
             else:
                 self.device_label.setText("Processing Device: Initializing...")
                 self.cpu_label.setText("Usage: N/A")
                 self.memory_label.setText("Memory: N/A")
-                
         except Exception as e:
             logger.error(f"Error in hardware monitoring: {e}")
             self.device_label.setText("Device: Error")
             self.cpu_label.setText("Usage: Error")
             self.memory_label.setText("Memory: Error")
-
     def _handle_error(self, error_message: str):
         """Handle errors during processing"""
         try:
             logger.error(f"Processing error: {error_message}")
             logger.error(traceback.format_exc())
-            
             # Stop any running timers
             for timer_attr in ['update_timer', 'progress_timer', 'sync_timer', 'progress_monitor']:
                 if hasattr(self, timer_attr):
                     timer = getattr(self, timer_attr)
                     if timer.isActive():
                         timer.stop()
-            
             # Show error to user
             QMessageBox.critical(self, "Error", str(error_message))
-            
             # Reset processing state
             self._reset_processing_state()
-            
         except Exception as e:
                        logger.error(f"Error in error handler: {e}", exc_info=True)
-
     def _on_open_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -2076,7 +1843,6 @@ class MainWindow(QMainWindow):
                 self.tab_widget.setCurrentIndex(0)  # Single file tab
             self.selected_file_path = Path(file_path)
             self.file_path_label.setText(str(self.selected_file_path))
-
     def _save_settings(self):
         """Save settings to config.ini (replaces settings.json)"""
         try:
@@ -2084,77 +1850,64 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Success", "Settings saved successfully!")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to save settings: {str(e)}")
-
     def _show_path_config(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Configure Paths")
         layout = QFormLayout(dialog)
-        
         # Add path configuration widgets
         output_path = QLineEdit(str(self.ocr.output_base_dir))
         browse_button = QPushButton("Browse")
         browse_button.clicked.connect(lambda: self._browse_directory(output_path))
-        
         path_layout = QHBoxLayout()
         path_layout.addWidget(output_path)
         path_layout.addWidget(browse_button)
-        
         layout.addRow("Output Directory:", path_layout)
-        
         # Add OK/Cancel buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | 
+            QDialogButtonBox.StandardButton.Ok |
             QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
-        
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.ocr.output_base_dir = Path(output_path.text())
             QMessageBox.information(self, "Success", "Output path updated!")
-
     def _show_performance_options(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("Performance Options")
         layout = QFormLayout(dialog)
-        
-        # Thread count setting 
+        # Thread count setting
         thread_count = QSpinBox()
         max_threads = psutil.cpu_count(logical=True)
         thread_count.setRange(1, max_threads)
         thread_count.setValue(self._config_values.get("thread_count", max_threads))
         thread_count.setEnabled(True)
-        layout.addRow("Thread Count:", thread_count) 
-        
+        layout.addRow("Thread Count:", thread_count)
         # Add timeout settings
         operation_timeout = QSpinBox()
         operation_timeout.setRange(60, 3600)  # 1 minute to 1 hour
         operation_timeout.setValue(self.ocr.operation_timeout)
         operation_timeout.setSuffix(" seconds")
         layout.addRow("Operation Timeout:", operation_timeout)
-        
         chunk_timeout = QSpinBox()
         chunk_timeout.setRange(30, 300)  # 30 seconds to 5 minutes
         chunk_timeout.setValue(self.ocr.chunk_timeout)
         chunk_timeout.setSuffix(" seconds")
         layout.addRow("Chunk Timeout:", chunk_timeout)
-        
         # Add OK/Cancel buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | 
+            QDialogButtonBox.StandardButton.Ok |
             QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
-        
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.thread_pool.setMaxThreadCount(thread_count.value())
             self.ocr.operation_timeout = operation_timeout.value()
             self.ocr.chunk_timeout = chunk_timeout.value()
             QMessageBox.information(self, "Success", "Performance settings updated!")
-
     def _show_about(self):
         about_text = """
             <h3>VisionLane OCR</h3>
@@ -2180,7 +1933,6 @@ class MainWindow(QMainWindow):
             <p><i>Visit the <a href='https://github.com/NeoMatrix14241/VisionLane'>GitHub repository</a> for updates.</i></p>
             """
         QMessageBox.about(self, "About VisionLane OCR", about_text)
-
     def _browse_directory(self, line_edit):
         dir_path = QFileDialog.getExistingDirectory(
             self,
@@ -2189,39 +1941,31 @@ class MainWindow(QMainWindow):
         )
         if dir_path:
             line_edit.setText(dir_path)
-
     def __del__(self):
         """Cleanup when window is closed"""
         try:
             # Remove log handlers first
             if hasattr(self, 'log_handler'):
                 logger.removeHandler(self.log_handler)
-            
             # Stop timers
             if hasattr(self, 'hw_timer'):
                 self.hw_timer.stop()
-            
             # Clean up resources
             if hasattr(self, 'ocr'):
                 self.ocr.cleanup_temp_files(force=True)
-                
         except Exception as e:
             pass
-
     def _check_real_progress(self):
         """Monitor actual progress by checking processed files"""
         try:
             if not hasattr(self.ocr, '_processed_files'):
                 return
-
             # Get actual count from OCR
             real_count = len(self.ocr._processed_files)
-            
             # Update progress if count has changed
             if real_count != self.processed_files:
                 self.processed_files = real_count
                 self.max_processed = max(self.max_processed, real_count)
-                
                 # Update progress display
                 if self.total_files > 0:
                     progress = int((real_count / self.total_files) * 100)
@@ -2229,22 +1973,17 @@ class MainWindow(QMainWindow):
                     self.overall_progress_label.setText(
                         f"Files Processed: {real_count}/{self.total_files}"
                     )
-                    
                     # Log progress change
                     logger.debug(f"Real progress update: {real_count}/{self.total_files}")
-            
             # Update current file display
             if hasattr(self.ocr, 'current_file') and self.ocr.current_file:
                 current = Path(self.ocr.current_file)
                 if current.name != getattr(self, '_last_displayed_file', None):
                     self.current_file_label.setText(f"Processing: {current.name}")
                     self._last_displayed_file = current.name
-            
             QApplication.processEvents()
-            
         except Exception as e:
             logger.error(f"Error checking real progress: {e}")
-
     def _delayed_init(self):
         """Initialize heavy components after window is shown"""
         try:
@@ -2262,23 +2001,17 @@ class MainWindow(QMainWindow):
             self.ocr.compression_quality = self.quality_slider.value()
             # Only setup logging ONCE here
             self._setup_logging()
-            
             # Setup timers
             self.hw_timer = QTimer(self)
             self.hw_timer.timeout.connect(self._update_hardware_info)
             self.hw_timer.start(1000)
-            
             self.progress_timer = QTimer(self)
             self.progress_timer.timeout.connect(self._force_progress_update)
             self.progress_timer.setInterval(100)
-            
             self.update_timer = QTimer(self)
             self.update_timer.timeout.connect(self._update_gui)
             self.update_timer.setInterval(100)
-            
             self._update_hardware_info()
-            
         except Exception as e:
             logger.error(f"Delayed initialization failed: {e}")
-           
             QMessageBox.critical(self, "Error", f"Failed to initialize: {e}")

@@ -4,30 +4,24 @@ import psutil
 import threading
 import logging
 from typing import Set
-
 logger = logging.getLogger(__name__)
-
 class ProcessManager:
     def __init__(self):
         self.processes: Set[int] = set()
         self.threads: Set[threading.Thread] = set()
         self.main_pid = os.getpid()
         self._lock = threading.Lock()
-        
     def track_thread(self, thread: threading.Thread):
         """Track thread for cleanup and ensure it's set as daemon"""
         # Ensure thread is daemon to prevent hanging on exit
         if not thread.daemon:
             thread.daemon = True
-            
         with self._lock:
             self.threads.add(thread)
-        
     def track_process(self, pid: int):
         """Track process for cleanup"""
         with self._lock:
             self.processes.add(pid)
-        
     def force_exit(self):
         """Force kill all tracked processes and threads"""
         # Stop threads first
@@ -41,7 +35,6 @@ class ProcessManager:
                 except:
                     pass
             self.threads.clear()
-            
         # Force kill processes and their children
         with self._lock:
             for pid in list(self.processes):
@@ -56,7 +49,6 @@ class ProcessManager:
                         proc.kill()  # Use kill() instead of terminate()
                 except:
                     continue
-                
             # Double check and force kill any remaining processes
             for pid in list(self.processes):
                 try:
@@ -65,9 +57,7 @@ class ProcessManager:
                 except:
                     pass
             self.processes.clear()
-            
         logger.debug("Force exit completed")
-
     def is_running(self) -> bool:
         """Check if any processes or threads are still running"""
         with self._lock:

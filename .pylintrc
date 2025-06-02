@@ -462,8 +462,8 @@ min-public-methods=1
 
 [EXCEPTIONS]
 # Exceptions that will emit a warning when being caught.
-overgeneral-exceptions=BaseException,
-                      Exception
+overgeneral-exceptions=builtins.BaseException,
+                      builtins.Exception
 
 [IMPORTS]
 # List of modules that can be imported at any level, not just the top level

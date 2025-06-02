@@ -10,7 +10,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import psutil
 import shutil
-
 # Set up logging with more detailed format
 logging.basicConfig(
     level=logging.INFO,
@@ -18,17 +17,13 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
-
-
 class PDFProcessor:
     def __init__(self):
         self.start_time = datetime.now(timezone.utc)
         self.user = os.getlogin()
-
     def get_max_threads(self):
         """Get the maximum number of threads available on the system"""
         return psutil.cpu_count(logical=True)
-
     def log_with_timestamp(
         self, message: str, level: str = "info", thread_name: str = None
     ):
@@ -39,26 +34,20 @@ class PDFProcessor:
             logger.error(f"{timestamp} - {thread_info}{message}")
         else:
             logger.info(f"{timestamp} - {thread_info}{message}")
-
     def compress_pdf(self, input_path: str, output_path: str, quality: int = 50, fast_mode: bool = True, compression_type: str = "jpeg") -> bool:
         """Compress a single PDF file using Ghostscript."""
         try:
             # Convert to absolute paths
             input_path = os.path.abspath(input_path)
             output_path = os.path.abspath(output_path)
-            
             if not os.path.exists(input_path):
                 self.log_with_timestamp(f"Input file not found: {input_path}", "error")
                 return False
-                
             start_time = time.time()
             thread_name = f"Thread-{threading.current_thread().ident}"
-            
             self.log_with_timestamp(f"Processing file: {input_path}", thread_name=thread_name)
-            
             # Create output directory if it doesn't exist
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
             # --- Find Ghostscript executable ---
             import sys
             if sys.platform.startswith("win"):
@@ -97,7 +86,6 @@ class PDFProcessor:
                     self.log_with_timestamp("Ghostscript not found! PDF compression will not run.", "error")
                     return False            # --- Check if compression is likely to be beneficial ---
             initial_size_mb = os.path.getsize(input_path) / (1024 * 1024)
-            
             # For very small PDFs (< 1MB), be more conservative
             if initial_size_mb < 1.0:
                 # Small PDFs - use gentler settings to avoid bloat
@@ -107,7 +95,6 @@ class PDFProcessor:
             else:
                 # Larger PDFs - standard compression settings
                 compression_level = max(0, min(9, int((100 - quality) / 11)))  # 0-9 compression level
-                
                 # Set downsampling resolution based on quality
                 if quality <= 30:
                     resolution = 72  # Low quality - aggressive compression
@@ -117,10 +104,8 @@ class PDFProcessor:
                     resolution = 300  # High quality
                 else:
                     resolution = 600  # Very high quality - minimal compression
-                
                 # Adjust JPEG quality based on input quality
                 jpeg_quality = max(5, min(100, quality))  # Never go below 5% JPEG quality
-            
             # --- IMPROVED: Set different parameters for each compression type ---            # Build GhostScript command with optimized parameters
             gs_cmd = [
                 f'"{gs_path}"',
@@ -130,7 +115,6 @@ class PDFProcessor:
                 '-dBATCH',
                 '-dSAFER',
             ]
-            
             # For small PDFs, use more conservative settings
             if initial_size_mb < 1.0:
                 gs_cmd.extend([
@@ -167,7 +151,6 @@ class PDFProcessor:
                     f'-dColorImageDownsampleThreshold=1.0',  # Always downsample color images
                     f'-dEncodeColorImages=true',
                 ])
-                
                 # Grayscale image settings
                 gs_cmd.extend([
                     f'-dGrayImageDownsampleType=/Bicubic',
@@ -176,7 +159,6 @@ class PDFProcessor:
                     f'-dGrayImageDownsampleThreshold=1.0',  # Always downsample grayscale images
                     f'-dEncodeGrayImages=true',
                 ])
-                
                 # Monochrome image settings
                 gs_cmd.extend([
                     f'-dMonoImageDownsampleType=/Bicubic',
@@ -187,12 +169,11 @@ class PDFProcessor:
             else:            # For small PDFs, preserve image quality
                 gs_cmd.extend([
                     f'-dDownsampleColorImages=false',
-                    f'-dDownsampleGrayImages=false', 
+                    f'-dDownsampleGrayImages=false',
                     f'-dDownsampleMonoImages=false',
                 ])
               # --- IMPROVED: Handle specific compression type settings (only for larger PDFs) ---
             ctype = (compression_type or "jpeg").lower()
-            
             if initial_size_mb >= 1.0:  # Only apply specific compression to larger files
                 if ctype == "jpeg":
                     gs_cmd.extend([
@@ -246,7 +227,6 @@ class PDFProcessor:
                         f'-dGrayImageFilter=/DCTEncode',
                         f'-dJPEGQ={jpeg_quality}',
                     ])
-            
             # --- IMPROVED: Add PDFSETTINGS presets for better compression ---
             # Override default settings with quality-based presets if quality is at extremes
             if quality < 30:
@@ -255,13 +235,11 @@ class PDFProcessor:
             elif quality > 90:
                 # Very high quality: minimal compression
                 gs_cmd.append('-dPDFSETTINGS=/prepress')
-                
             # Quote the file paths and add to command
             gs_cmd.extend([
                 f'-sOutputFile="{output_path}"',
                 f'"{input_path}"'
             ])
-
             # Execute compression
             self.log_with_timestamp(f"Starting compression with command: {' '.join(gs_cmd)}", thread_name=thread_name)
             run_kwargs = dict(
@@ -280,40 +258,37 @@ class PDFProcessor:
             self.log_with_timestamp(f"Ghostscript stdout: {process.stdout}", thread_name=thread_name)
             if process.stderr:
                 self.log_with_timestamp(f"Ghostscript stderr: {process.stderr}", thread_name=thread_name)
-
             if process.returncode == 0 and os.path.exists(output_path):
                 initial_size = os.path.getsize(input_path) / (1024 * 1024)  # Convert to MB
                 final_size = os.path.getsize(output_path) / (1024 * 1024)  # Convert to MB
                 compression_ratio = (1 - final_size/initial_size) * 100
                 elapsed_time = time.time() - start_time
-                
                 self.log_with_timestamp(
-                    f"\nCompression Results for {os.path.basename(input_path)}:", 
+                    f"\nCompression Results for {os.path.basename(input_path)}:",
                     thread_name=thread_name
                 )
                 self.log_with_timestamp(
-                    f"- Initial size: {initial_size:.2f}MB", 
+                    f"- Initial size: {initial_size:.2f}MB",
                     thread_name=thread_name
                 )
                 self.log_with_timestamp(
-                    f"- Final size: {final_size:.2f}MB", 
+                    f"- Final size: {final_size:.2f}MB",
                     thread_name=thread_name
                 )
                 self.log_with_timestamp(
-                    f"- Compression ratio: {compression_ratio:.2f}%", 
+                    f"- Compression ratio: {compression_ratio:.2f}%",
                     thread_name=thread_name
                 )
                 self.log_with_timestamp(
-                    f"- Processing time: {elapsed_time:.2f}s", 
+                    f"- Processing time: {elapsed_time:.2f}s",
                     thread_name=thread_name
                 )
                   # If compression actually made the file larger, use the original
                 # But be more lenient for small files (< 5% increase is acceptable)
                 size_increase_threshold = 0.05 if initial_size_mb < 2.0 else 0.0
-                
                 if final_size > initial_size * (1 + size_increase_threshold):
                     self.log_with_timestamp(
-                        f"Compression increased file size significantly, reverting to original.", 
+                        f"Compression increased file size significantly, reverting to original.",
                         thread_name=thread_name
                     )
                     os.remove(output_path)
@@ -321,34 +296,30 @@ class PDFProcessor:
                     return True
                 elif final_size > initial_size:
                     self.log_with_timestamp(
-                        f"Compression slightly increased file size but within acceptable threshold.", 
+                        f"Compression slightly increased file size but within acceptable threshold.",
                         thread_name=thread_name
                     )
-                    
                 return True
             else:
                 self.log_with_timestamp(
-                    f"Failed to compress {input_path}\nError: {process.stderr}", 
-                    "error", 
+                    f"Failed to compress {input_path}\nError: {process.stderr}",
+                    "error",
                     thread_name=thread_name
                 )
                 return False
-                
         except Exception as e:
             self.log_with_timestamp(
-                f"Error compressing {input_path}: {str(e)}", 
-                "error", 
+                f"Error compressing {input_path}: {str(e)}",
+                "error",
                 thread_name=thread_name
             )
             return False
-
     def process_directory(self, input_folder: str, output_folder: str, quality: int, fast_mode: bool = True) -> None:
         """Process all PDFs in a directory recursively using multithreading"""
         try:
             # Convert to absolute paths
             input_folder = os.path.abspath(input_folder)
             output_folder = os.path.abspath(output_folder)
-            
             # Get list of PDF files
             pdf_files = []
             for root, _, files in os.walk(input_folder):
@@ -360,15 +331,12 @@ class PDFProcessor:
                         os.makedirs(output_subdir, exist_ok=True)
                         output_path = os.path.abspath(os.path.join(output_subdir, f"{os.path.basename(file)}"))
                         pdf_files.append((input_path, output_path, quality))
-
             if not pdf_files:
                 self.log_with_timestamp("No PDF files found in the input directory")
                 return
-
             # Get maximum number of threads
             max_threads = min(len(pdf_files), self.get_max_threads())
             self.log_with_timestamp(f"Processing {len(pdf_files)} files using {max_threads} threads")
-
             # Process files using ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=max_threads) as executor:
                 futures = []
@@ -377,14 +345,13 @@ class PDFProcessor:
                     self.log_with_timestamp(f"Queueing file: {input_path}")
                     futures.append(
                         executor.submit(
-                            self.compress_pdf, 
-                            input_path, 
-                            output_path, 
+                            self.compress_pdf,
+                            input_path,
+                            output_path,
                             quality,
                             fast_mode
                         )
                     )
-                
                 # Process results with progress bar
                 successful = 0
                 failed = 0
@@ -399,7 +366,6 @@ class PDFProcessor:
                             self.log_with_timestamp(f"Error in thread: {str(e)}", "error")
                             failed += 1
                         pbar.update(1)
-
             # Log final statistics
             self.log_with_timestamp(
                 f"\nCompression Statistics:"
@@ -408,12 +374,9 @@ class PDFProcessor:
                 f"\n- Failed: {failed}"
                 f"\n- Success rate: {(successful/len(pdf_files)*100):.2f}%"
             )
-
         except Exception as e:
             self.log_with_timestamp(f"Error processing directory: {str(e)}", "error")
             raise
-
-
 # Export compress_pdf for import in ocr_processor.py
 def compress_pdf(input_path, output_path, quality=50, fast_mode=True, compression_type="jpeg"):
     """
@@ -421,20 +384,16 @@ def compress_pdf(input_path, output_path, quality=50, fast_mode=True, compressio
     """
     processor = PDFProcessor()
     return processor.compress_pdf(input_path, output_path, quality, fast_mode, compression_type=compression_type)
-
 def main():
     parser = argparse.ArgumentParser(
         description="Recursively compress PDF files while preserving DPI and OCR layers"
     )
-
     parser.add_argument(
         "input", type=str, help="Input PDF file or directory containing PDF files"
     )
-
     parser.add_argument(
         "output", type=str, help="Output directory for compressed PDF files"
     )
-
     parser.add_argument(
         "--quality",
         type=int,
@@ -443,16 +402,13 @@ def main():
         metavar="0-100",
         help="Compression quality (0-100, higher = better quality but larger file size, default: 50)",
     )
-
     parser.add_argument(
         "--fast",
         action="store_true",
         help="Enable fast mode (skip detailed page analysis)",
     )
-
     args = parser.parse_args()
     processor = PDFProcessor()
-
     # Log start of processing
     processor.log_with_timestamp("=== PDF Compression Task Started ===")
     processor.log_with_timestamp(
@@ -464,7 +420,6 @@ def main():
     processor.log_with_timestamp(f"Input path: {args.input}")
     processor.log_with_timestamp(f"Output path: {args.output}")
     processor.log_with_timestamp(f"Quality setting: {args.quality}")
-
     try:
         if os.path.isfile(args.input):
             processor.log_with_timestamp("Processing single file mode")
@@ -483,13 +438,9 @@ def main():
                 f"Error: {args.input} is not a valid file or directory", "error"
             )
             return
-
         processor.log_with_timestamp("=== PDF Compression Task Completed ===")
-
     except Exception as e:
         processor.log_with_timestamp(f"Task failed: {str(e)}", "error")
         processor.log_with_timestamp("=== PDF Compression Task Failed ===")
-
-
 if __name__ == "__main__":
     main()
