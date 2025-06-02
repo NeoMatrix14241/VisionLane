@@ -130,7 +130,7 @@ The following features and improvements are planned for future releases:
 - [ ] Enhanced PDF output pathing
   _→ Will remove additional unecessary subfolder next to the PDF naming convention_
 - [ ] Remove '_ocr' suffix when processing PDF files for OCR in to PDF output format
-  _→ Goal is to preserve file naming convention and is used for debugging purposes during development only_
+  _→ The goal is to preserve folder structure and file naming convention and is used for debugging purposes during development only_
 
 ### 🎨 UI/UX Features
 - [x] Add dark mode toggle and various bug fixes  
