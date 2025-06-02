@@ -84,7 +84,7 @@ echo Building application with Nuitka...
     --include-package=scipy^
     --include-package=psutil^
     --include-package=pynvml^
-    --include-package=nvidia-ml-py3^
+    --include-package=nvidia_ml_py3^
     --include-package=GPUtil^
     --include-package=subprocess^
     --include-package=platform^
