@@ -62,3 +62,4 @@ pyinstaller==6.13.0
 nuitka==2.7.5
 zstandard==0.23.0
 reportlab==4.4.1
+pylint==3.3.7
