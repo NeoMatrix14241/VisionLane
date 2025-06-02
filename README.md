@@ -153,15 +153,11 @@ cd VisionLane
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
+```
 
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
-```
-
-4. Test CUDA availability (optional):
-```bash
-python test_cuda.py
 ```
 
 ## Build
@@ -180,7 +176,7 @@ You can build VisionLane OCR as a standalone executable using either Nuitka (rec
     build_nuitka.bat
     ```
 
-   - The output will be in the `dist` directory.
+   - The output will be in the `dist_nuitka` directory.
    - By default, this uses "onedir" mode (a folder with all dependencies).
 
 ### Build with PyInstaller (Alternative)
@@ -195,7 +191,7 @@ You can build VisionLane OCR as a standalone executable using either Nuitka (rec
     build_pyinstaller.bat
     ```
 
-   - The output will be in the `dist` directory.
+   - The output will be in the `dist_pyinstaller` directory.
    - This uses the `build.spec` file for configuration.
 
 **Note:**  
