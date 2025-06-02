@@ -170,7 +170,7 @@ IF %ERRORLEVEL% NEQ 0 (
             xcopy "%%d\bin\cusparse*.dll" "dist_nuitka\main.dist\" /Y 2>nul
             xcopy "%%d\bin\cufft*.dll" "dist_nuitka\main.dist\" /Y 2>nul
         )
-    )    
+    )
     REM Copy DocTR models cache
     set "doctr_cache=%USERPROFILE%\.cache\doctr"
     if exist "%doctr_cache%" (
