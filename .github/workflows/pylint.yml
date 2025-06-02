@@ -37,4 +37,5 @@ jobs:
     
     - name: Analysing the code with pylint
       run: |
-        pylint $(git ls-files '*.py') || exit 0
+        pylint $(git ls-files '*.py') --output-format=text --reports=yes --score=yes
+        echo "Pylint analysis completed. Check the logs above for any issues found."
