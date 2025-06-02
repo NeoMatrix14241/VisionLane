@@ -37,5 +37,6 @@ jobs:
     
     - name: Analysing the code with pylint
       run: |
+        echo "Running pylint to check code quality, style, and potential bugs..."
         pylint $(git ls-files '*.py') --output-format=text --reports=yes --score=yes
         echo "Pylint analysis completed. Check the logs above for any issues found."
