@@ -34,8 +34,6 @@ echo Building application with Nuitka...
     --include-qt-plugins=platforms,imageformats^
     --include-data-file=icon.ico=icon.ico^
     --include-data-file=config.ini=config.ini^
-    --include-data-file=doctr_torch_setup.py=doctr_torch_setup.py^
-    --include-data-file=doctr_patch.py=doctr_patch.py^
     --include-package=doctr^
     --include-package=doctr.models^
     --include-package=doctr.models.detection^
@@ -109,6 +107,15 @@ echo Building application with Nuitka...
     --include-package=utils.startup_cache^
     --include-package=utils.startup_config^
     --include-package=utils.model_downloader^
+    --include-package=core^
+    --include-package=core.cuda_compat_plugin^
+    --include-package=core.cuda_env_patch^
+    --include-package=core.cuda_patch_wrapper^
+    --include-package=core.doctr_patch^
+    --include-package=core.doctr_torch_setup^
+    --include-package=core.nuitka_cuda_patch^
+    --include-package=core.ocr_processor^
+    --include-package=core.runtime_cuda_patch^
     --include-package-data=doctr^
     --include-package-data=torch^
     --include-package-data=torchvision^
@@ -119,7 +126,6 @@ echo Building application with Nuitka...
     --include-data-dir=.venv\Lib\site-packages\torch=torch^
     --include-data-dir=.venv\Lib\site-packages\torchvision=torchvision^
     --include-data-dir=.venv\Lib\site-packages\torch\lib=torch\lib^
-    --include-data-file=doctr_torch_setup.py=doctr_torch_setup.py^
     --output-dir=dist_nuitka^
     --windows-icon-from-ico=icon.ico^
     --windows-console-mode=force^
