@@ -20,14 +20,17 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1-mesa-glx libglib2.0-0
+        sudo apt-get install -y libgl1-mesa-dev libglib2.0-0 libxext6 libxrender-dev libgomp1
     
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pylint
-        # Install project dependencies
-        pip install numpy torch torchvision opencv-python Pillow PyQt6 python-doctr psutil pynvml gputil
+        # Install project dependencies with fallback options
+        pip install numpy torch torchvision opencv-python-headless Pillow psutil pynvml gputil
+        # Install PyQt6 and python-doctr separately (may have platform issues)
+        pip install PyQt6 || echo "PyQt6 installation failed, continuing without GUI support"
+        pip install python-doctr || echo "python-doctr installation failed, continuing without doctr"
         # Install additional dependencies if requirements.txt exists
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     
