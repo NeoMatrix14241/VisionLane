@@ -111,6 +111,10 @@ The following features and improvements are planned for future releases:
   _→ RGB is the only channel supported by HOCR transform of OCRmyPDF_
 - [x] Fix PyPDFCompressor (using GhostScript) don't properly compress PDF
   _→ There is no difference in size_
+- [ ] Fix "Single File" option not working
+  _→ Currently, the only working feature is "Folder" which is batch processing_
+- [ ] Fix "PDF" option not working
+  _→ Currently, the only working feature is "Folder" which is batch processing_
 
 ### 📁 File Handling Enhancements
 - [x] Add option to archive processed files  
