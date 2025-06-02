@@ -89,10 +89,14 @@ echo Building application with Nuitka...
     --include-package=PIL ^
     --include-package=numpy ^
     --include-package=cv2 ^
-    --include-package=scipy ^
+    --include-package=scipy ^    
     --include-package=psutil ^
     --include-package=pynvml ^
+    --include-package=nvidia-ml-py3 ^
     --include-package=GPUtil ^
+    --include-package=subprocess ^
+    --include-package=wmi ^
+    --include-package=platform ^
     --include-package=PyPDF2 ^
     --include-package=ocrmypdf ^
     --include-package=ocrmypdf.data ^
