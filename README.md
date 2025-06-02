@@ -46,6 +46,7 @@ A powerful OCR (Optical Character Recognition) application built with DocTR and 
 - ⚠️ **CRITICAL: NVIDIA GPU with 8GB+ VRAM**  
   The app **WILL CRASH** and must be restarted when error occured.  
   CUDA and recent drivers are **recommended** (will fallback to CPU if GPU is not supported).
+  DocTR don't require tensor cores to work, only CUDA, I only test it for GTX 1660 Ti and maybe older gen GPU might work (1000 series but not sure for 900 series NVIDIA GPU, needs testing)
 - **Windows 10 or higher**
 - [**GhostScript**](https://www.ghostscript.com/releases/gsdnld.html)  
   Required **only** for PDF compression features; optional otherwise.
