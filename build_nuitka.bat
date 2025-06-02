@@ -28,13 +28,9 @@ echo Building application with Nuitka...
 .\.venv\Scripts\python.exe -m nuitka^
     --standalone^
     --nofollow-import-to=onnx^
-    --nofollow-imports^
     --follow-import-to=doctr^
     --enable-plugin=pylint-warnings^
-    --enable-plugin=numpy^
-    --enable-plugin=torch^
     --enable-plugin=pyqt6^
-    --enable-plugin=multiprocessing^
     --include-qt-plugins=platforms,imageformats^
     --include-data-file=icon.ico=icon.ico^
     --include-data-file=config.ini=config.ini^
@@ -85,6 +81,12 @@ echo Building application with Nuitka...
     --include-package=psutil^
     --include-package=pynvml^
     --include-package=GPUtil^
+    --include-package=nvidia.ml_py^
+    --include-package=nvidia.ml_py.nvml^
+    --include-package=nvidia.nvml^
+    --include-package=nvidia.cuda_runtime^
+    --include-package=nvidia.cuda_nvrtc^
+    --include-package=nvidia.cudnn^
     --include-package=subprocess^
     --include-package=platform^
     --include-package=PyPDF2^
@@ -119,12 +121,10 @@ echo Building application with Nuitka...
     --include-package-data=torchaudio^
     --include-package-data=PIL^
     --include-package-data=ocrmypdf^
+    --include-package-data=GPUtil^
     --include-data-dir=.venv\Lib\site-packages\torch=torch^
     --include-data-dir=.venv\Lib\site-packages\torchvision=torchvision^
-    --include-data-dir=.venv\Lib\site-packages\torchaudio=torchaudio^
-    --include-data-dir=.venv\Lib\site-packages\doctr=doctr^
     --include-data-dir=.venv\Lib\site-packages\torch\lib=torch\lib^
-    --include-data-dir=.venv\Lib\site-packages\torchvision\datasets=torchvision\datasets^
     --include-data-file=doctr_torch_setup.py=doctr_torch_setup.py^
     --output-dir=dist_nuitka^
     --windows-icon-from-ico=icon.ico^
@@ -152,10 +152,33 @@ IF %ERRORLEVEL% NEQ 0 (
         xcopy ".venv\Lib\site-packages\torch\lib\*" "dist_nuitka\main.dist\torch\lib\" /Y /E /I 2>nul
     )
     
-    REM Copy NVIDIA libraries
+    REM Copy NVIDIA libraries - Enhanced (remove duplicate)
     if exist ".venv\Lib\site-packages\nvidia" (
         echo Copying NVIDIA libraries...
         xcopy ".venv\Lib\site-packages\nvidia\*" "dist_nuitka\main.dist\nvidia\" /Y /E /I 2>nul
+    )
+    
+    REM Copy pynvml data files
+    if exist ".venv\Lib\site-packages\pynvml" (
+        echo Copying pynvml data files...
+        xcopy ".venv\Lib\site-packages\pynvml\*" "dist_nuitka\main.dist\pynvml\" /Y /E /I 2>nul
+    )
+    
+    REM Copy NVML DLLs from system
+    if exist "C:\Windows\System32\nvml.dll" (
+        echo Copying NVML system libraries...
+        copy "C:\Windows\System32\nvml.dll" "dist_nuitka\main.dist\" /Y 2>nul
+    )
+    
+    REM Copy NVIDIA driver DLLs
+    if exist "C:\Windows\System32\nvcuda.dll" (
+        echo Copying NVIDIA CUDA driver...
+        copy "C:\Windows\System32\nvcuda.dll" "dist_nuitka\main.dist\" /Y 2>nul
+    )
+    
+    REM Copy additional NVIDIA DLLs
+    for %%f in ("C:\Windows\System32\nvapi*.dll") do (
+        copy "%%f" "dist_nuitka\main.dist\" /Y 2>nul
     )
     
     REM Copy CUDA libraries if found in system
@@ -170,6 +193,7 @@ IF %ERRORLEVEL% NEQ 0 (
             xcopy "%%d\bin\cufft*.dll" "dist_nuitka\main.dist\" /Y 2>nul
         )
     )
+
     REM Copy DocTR models cache
     set "doctr_cache=%USERPROFILE%\.cache\doctr"
     if exist "%doctr_cache%" (
