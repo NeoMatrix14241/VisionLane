@@ -31,8 +31,11 @@ jobs:
         # Install PyQt6 and python-doctr separately (may have platform issues)
         pip install PyQt6 || echo "PyQt6 installation failed, continuing without GUI support"
         pip install python-doctr || echo "python-doctr installation failed, continuing without doctr"
-        # Install additional dependencies if requirements.txt exists
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # Install additional dependencies if requirements.txt exists, excluding Windows-specific packages
+        if [ -f requirements.txt ]; then 
+          # Filter out Windows-specific packages that won't install on Linux
+          grep -v "python-magic-bin" requirements.txt | grep -v "pywin32" | pip install -r /dev/stdin || echo "Some packages failed to install, continuing..."
+        fi
     
     - name: Analysing the code with pylint
       run: |
