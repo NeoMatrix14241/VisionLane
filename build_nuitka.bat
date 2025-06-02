@@ -23,18 +23,6 @@ IF %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Check PyTorch installation (skip if file doesn't exist)
-if exist "test_cuda.py" (
-    echo Verifying PyTorch installation...
-    .\.venv\Scripts\python.exe test_cuda.py
-    
-    IF %ERRORLEVEL% NEQ 0 (
-        echo Warning: PyTorch verification failed. Build may not include CUDA support.
-    )
-) else (
-    echo Skipping PyTorch verification (test_cuda.py not found)...
-)
-
 REM Build with Nuitka
 echo Building application with Nuitka...
 .\.venv\Scripts\python.exe -m nuitka^
