@@ -448,12 +448,88 @@ if defined CC echo   CC=!CC!
 if defined CXX echo   CXX=!CXX!
 if defined CCACHE_DIR echo   CCACHE_DIR=!CCACHE_DIR!
 if defined CLCACHE_DIR echo   CLCACHE_DIR=!CLCACHE_DIR!
+
+REM Predict exactly which compiler Nuitka will use
+echo.
+echo === Nuitka Compiler Prediction ===
+
+REM Test compiler detection in order of Nuitka's preference
+echo Testing compiler availability in Nuitka's preference order:
+
+REM 1. Check if CC/CXX environment variables are set (highest priority)
+if defined CC (
+    echo 1. CC environment variable set: !CC!
+    !CC! --version >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        echo   → CC command works - Nuitka will use: !CC!
+        set "PREDICTED_COMPILER=!CC!"
+        goto :compiler_predicted
+    ) else (
+        echo   → CC command failed - Nuitka will ignore this
+    )
+)
+
+REM 2. Check for MSVC (cl.exe) in PATH
+where cl >nul 2>nul
+if !ERRORLEVEL! EQU 0 (
+    echo 2. MSVC (cl.exe) found in PATH
+    cl 2>nul | findstr /i "Microsoft" >nul
+    if !ERRORLEVEL! EQU 0 (
+        echo   → MSVC is functional - Nuitka will use: MSVC (cl.exe)
+        set "PREDICTED_COMPILER=MSVC (cl.exe)"
+        goto :compiler_predicted
+    )
+)
+
+REM 3. Check for GCC in PATH
+where gcc >nul 2>nul
+if !ERRORLEVEL! EQU 0 (
+    echo 3. GCC found in PATH
+    gcc --version >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        echo   → GCC is functional - Nuitka will use: GCC
+        set "PREDICTED_COMPILER=GCC"
+        goto :compiler_predicted
+    )
+)
+
+REM 4. Check for Clang in PATH
+where clang >nul 2>nul
+if !ERRORLEVEL! EQU 0 (
+    echo 4. Clang found in PATH
+    clang --version >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        echo   → Clang is functional - Nuitka will use: Clang
+        set "PREDICTED_COMPILER=Clang"
+        goto :compiler_predicted
+    )
+)
+
+REM 5. No compiler found - Nuitka will download MinGW
+echo 5. No system compilers found
+echo   → Nuitka will download MinGW-w64 automatically
+set "PREDICTED_COMPILER=MinGW-w64 (auto-download)"
+
+:compiler_predicted
+echo.
+echo *** FINAL PREDICTION: Nuitka will use %PREDICTED_COMPILER% ***
+
+REM Show cache tool integration
+if defined CC (
+    if "!CC:ccache=!" neq "!CC!" (
+        echo *** CACHE: ccache will accelerate compilation ***
+    ) else if "!CC:clcache=!" neq "!CC!" (
+        echo *** CACHE: clcache will accelerate compilation ***
+    )
+) else (
+    echo *** CACHE: No cache tool integration ***
+)
+
 echo ================================
 echo.
 
 .\.venv\Scripts\python.exe -m nuitka^
     --standalone^
-    --show-progress^
     --nofollow-import-to=onnx^
     --follow-import-to=doctr^
     --enable-plugin=pylint-warnings^

@@ -6,6 +6,7 @@ del temp_files.txt 2>nul
 del temp_module_count.txt 2>nul
 del temp_error_count.txt 2>nul
 del temp_warning_count.txt 2>nul
+rmdir /s /q temp_binaries 2>nul
 
 :: Set Python and Pip executables to use the virtual environment
 set "PYTHON_EXEC=.venv\Scripts\python.exe"
