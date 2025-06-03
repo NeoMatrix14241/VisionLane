@@ -1762,7 +1762,7 @@ class MainWindow(QMainWindow):
         try:
             # Get comprehensive GPU info using patched monitoring
             gpu_info = get_gpu_info()
-            
+
             if gpu_info['monitoring_available'] and gpu_info['count'] > 0:
                 gpu_text_parts = []
                 for gpu in gpu_info['gpus']:
@@ -1771,19 +1771,19 @@ class MainWindow(QMainWindow):
                     memory_used = gpu['memory_used']
                     memory_total = gpu['memory_total']
                     temperature = gpu['temperature']
-                    
+
                     # Format GPU information
                     if memory_total > 0:
                         memory_percent = (memory_used / memory_total) * 100
                         gpu_text = f"{gpu_name}: {utilization:.1f}% util, {memory_used}MB/{memory_total}MB ({memory_percent:.1f}%)"
                     else:
                         gpu_text = f"{gpu_name}: {utilization:.1f}% util"
-                    
+
                     if temperature > 0:
                         gpu_text += f", {temperature}°C"
-                    
+
                     gpu_text_parts.append(gpu_text)
-                
+
                 gpu_text = " | ".join(gpu_text_parts)
             else:
                 # Fallback for when monitoring is not available
@@ -1799,11 +1799,11 @@ class MainWindow(QMainWindow):
                         gpu_text = "CUDA not available"
                 except Exception:
                     gpu_text = "GPU monitoring unavailable"
-            
+
             # Update GPU info label
             if hasattr(self, 'gpu_info_label'):
                 self.gpu_info_label.setText(f"GPU: {gpu_text}")
-            
+
         except Exception as e:
             logger.error(f"Error updating hardware info: {e}")
             if hasattr(self, 'gpu_info_label'):

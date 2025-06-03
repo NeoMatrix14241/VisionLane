@@ -20,6 +20,26 @@ set "BLUE=[34m"
 set "RESET=[0m"
 
 echo %BLUE%============================================================%RESET%
+echo %BLUE%            VisionLaneOCR - Pylint Code Cleanup            %RESET%
+echo %BLUE%============================================================%RESET%
+echo.
+
+REM Check if pylint_clean.py exists in project directory
+if exist "pylint_clean.py" (
+    echo %GREEN%[INFO]%RESET% Running pylint code cleanup...
+    .\.venv\Scripts\python.exe pylint_clean.py
+    if !ERRORLEVEL! NEQ 0 (
+        echo %YELLOW%[WARN]%RESET% Pylint cleanup completed with warnings
+    ) else (
+        echo %GREEN%[SUCCESS]%RESET% Pylint cleanup completed successfully
+    )
+) else (
+    echo %YELLOW%[WARN]%RESET% pylint_clean.py not found in project directory
+    echo %YELLOW%[WARN]%RESET% Skipping code cleanup step
+)
+echo.
+
+echo %BLUE%============================================================%RESET%
 echo %BLUE%            VisionLaneOCR - Pylint Code Analysis           %RESET%
 echo %BLUE%============================================================%RESET%
 echo.
@@ -179,7 +199,18 @@ if exist .pylintrc (
 
 :: Extract score from log file
 set "score_line="
-for /f "tokens=*" %%a in ('findstr /c:"Your code has been rated at" "%log_file%" 2^>nul') do set "score_line=%%a"
+for /f "delims=" %%a in ('findstr /c:"Your code has been rated at" "%log_file%" 2^>nul') do set "score_line=%%a"
+
+REM Also try alternative score format if first method fails
+if not defined score_line (
+    for /f "delims=" %%a in ('findstr /c:"rated at" "%log_file%" 2^>nul') do set "score_line=%%a"
+)
+
+REM Try to extract just the score number for comparison
+set "score_number="
+if defined score_line (
+    for /f "tokens=6 delims= " %%s in ("!score_line!") do set "score_number=%%s"
+)
 
 :: Generate summary
 echo %YELLOW%[INFO]%RESET% Generating summary report...
@@ -198,9 +229,13 @@ echo %YELLOW%[INFO]%RESET% Generating summary report...
 
 if defined score_line (
     echo SCORE RESULTS: >> "%summary_file%"
-    echo %score_line% >> "%summary_file%"
+    echo !score_line! >> "%summary_file%"
+    if defined score_number (
+        echo Score Value: !score_number! >> "%summary_file%"
+    )
 ) else (
     echo SCORE RESULTS: Unable to extract score from analysis >> "%summary_file%"
+    echo Note: Check the full report for score information >> "%summary_file%"
 )
 
 (
@@ -295,7 +330,12 @@ if %pylint_exit_code% equ 0 (
 
 :: Display score if available
 if defined score_line (
-    echo %BLUE%[SCORE]%RESET% %score_line%
+    echo %BLUE%[SCORE]%RESET% !score_line!
+    if defined score_number (
+        echo %BLUE%[SCORE VALUE]%RESET% !score_number!
+    )
+) else (
+    echo %YELLOW%[SCORE]%RESET% Score extraction failed - check full report
 )
 
 echo.
