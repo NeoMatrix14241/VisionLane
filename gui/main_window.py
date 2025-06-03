@@ -22,6 +22,16 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+# Apply GPU monitoring patches early
+try:
+    from core.gpu_monitoring_patch import apply_gpu_monitoring_patches, get_gpu_info
+    apply_gpu_monitoring_patches()
+except ImportError:
+    print("Warning: Could not import GPU monitoring patches")
+    def get_gpu_info():
+        return {'gpus': [], 'count': 0, 'monitoring_available': False}
+
 # Now import project modules
 from core.ocr_processor import OCRProcessor
 from .processing_thread import OCRWorker
@@ -288,7 +298,6 @@ class MainWindow(QMainWindow):
             self.folder_archive_dir.setText(v["archive_folder"])
         if v.get("archive_pdf"):
             self.pdf_archive_dir.setText(v["archive_pdf"])
-        # ...existing code...
     def _save_config(self):
         """Save all GUI settings to config.ini with proper section ordering"""
         # Create ordered config to ensure proper section sequence
@@ -1674,6 +1683,7 @@ class MainWindow(QMainWindow):
             # Show "Starting processing..." at the beginning
             if current_file == 0:
                 self.current_file_label.setText("Starting processing...")
+
             else:
                 # Show the correct file name based on progress
                 if hasattr(self, '_files_to_process') and len(self._files_to_process) >= current_file:
@@ -1748,69 +1758,56 @@ class MainWindow(QMainWindow):
             logger.error(f"Error during process completion: {e}")
             self._reset_processing_state()
     def _update_hardware_info(self):
-        """Update hardware info display with better error handling and GPU memory tracking"""
+        """Update hardware information display with proper GPU monitoring"""
         try:
-            if hasattr(self, 'ocr'):
-                device = getattr(self.ocr, 'device', 'cpu')  # Default to CPU if device not set
-                # GPU Mode
-                if device == "cuda" and torch.cuda.is_available():
-                    self.device_label.setText("Processing Device: GPU")
-                    try:
-                        # Try NVML first
-                        if self.nvml_initialized:
-                            import pynvml
-                            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                            util_rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                            gpu_util = util_rates.gpu if util_rates else 0
-                            used_mb = mem_info.used / (1024*1024)
-                            total_mb = mem_info.total / (1024*1024)
-                            self.cpu_label.setText(f"GPU Usage: {gpu_util}%")
-                            self.memory_label.setText(f"GPU Memory: {used_mb:.0f}MB/{total_mb:.0f}MB")
-                        # Try GPUtil as fallback
-                        else:
-                            import GPUtil
-                            gpus = GPUtil.getGPUs()
-                            if gpus:
-                                gpu = gpus[0]
-                                self.cpu_label.setText(f"GPU Usage: {gpu.load * 100:.1f}%")
-                                self.memory_label.setText(
-                                    f"GPU Memory: {gpu.memoryUsed:.0f}MB/{gpu.memoryTotal:.0f}MB"
-                                )
-                            else:
-                                raise RuntimeError("No GPU detected by GPUtil")
-                    except Exception:
-                        # Fallback to basic PyTorch info
-                        try:
-                            allocated = torch.cuda.memory_allocated(0) / (1024*1024)
-                            total = torch.cuda.get_device_properties(0).total_memory / (1024*1024)
-                            self.cpu_label.setText("GPU Usage: N/A")
-                            self.memory_label.setText(f"GPU Memory: {allocated:.0f}MB/{total:.0f}MB")
-                        except Exception as e:
-                            self.cpu_label.setText("GPU Usage: Error")
-                            self.memory_label.setText("GPU Memory: Error")
-                            logger.error(f"Failed to get GPU metrics: {e}")
-                # CPU Mode
-                else:
-                    self.device_label.setText("Processing Device: CPU")
-                    try:
-                        cpu_percent = psutil.cpu_percent(interval=None)
-                        memory = psutil.virtual_memory()
-                        self.cpu_label.setText(f"CPU Usage: {cpu_percent}%")
-                        self.memory_label.setText(f"Memory: {memory.percent}%")
-                    except Exception as e:
-                        logger.error(f"Failed to get CPU metrics: {e}")
-                        self.cpu_label.setText("CPU Usage: Error")
-                        self.memory_label.setText("Memory: Error")
+            # Get comprehensive GPU info using patched monitoring
+            gpu_info = get_gpu_info()
+            
+            if gpu_info['monitoring_available'] and gpu_info['count'] > 0:
+                gpu_text_parts = []
+                for gpu in gpu_info['gpus']:
+                    gpu_name = gpu['name']
+                    utilization = gpu['utilization']
+                    memory_used = gpu['memory_used']
+                    memory_total = gpu['memory_total']
+                    temperature = gpu['temperature']
+                    
+                    # Format GPU information
+                    if memory_total > 0:
+                        memory_percent = (memory_used / memory_total) * 100
+                        gpu_text = f"{gpu_name}: {utilization:.1f}% util, {memory_used}MB/{memory_total}MB ({memory_percent:.1f}%)"
+                    else:
+                        gpu_text = f"{gpu_name}: {utilization:.1f}% util"
+                    
+                    if temperature > 0:
+                        gpu_text += f", {temperature}°C"
+                    
+                    gpu_text_parts.append(gpu_text)
+                
+                gpu_text = " | ".join(gpu_text_parts)
             else:
-                self.device_label.setText("Processing Device: Initializing...")
-                self.cpu_label.setText("Usage: N/A")
-                self.memory_label.setText("Memory: N/A")
+                # Fallback for when monitoring is not available
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        gpu_count = torch.cuda.device_count()
+                        if gpu_count > 0:
+                            gpu_text = f"{gpu_count} CUDA device(s) available"
+                        else:
+                            gpu_text = "No CUDA devices"
+                    else:
+                        gpu_text = "CUDA not available"
+                except Exception:
+                    gpu_text = "GPU monitoring unavailable"
+            
+            # Update GPU info label
+            if hasattr(self, 'gpu_info_label'):
+                self.gpu_info_label.setText(f"GPU: {gpu_text}")
+            
         except Exception as e:
-            logger.error(f"Error in hardware monitoring: {e}")
-            self.device_label.setText("Device: Error")
-            self.cpu_label.setText("Usage: Error")
-            self.memory_label.setText("Memory: Error")
+            logger.error(f"Error updating hardware info: {e}")
+            if hasattr(self, 'gpu_info_label'):
+                self.gpu_info_label.setText("GPU: Monitoring error")
     def _handle_error(self, error_message: str):
         """Handle errors during processing"""
         try:

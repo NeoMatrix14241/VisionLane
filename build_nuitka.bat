@@ -113,6 +113,7 @@ echo Building application with Nuitka...
     --include-package=core.cuda_patch_wrapper^
     --include-package=core.doctr_patch^
     --include-package=core.doctr_torch_setup^
+    --include-package=core.gpu_monitoring_patch^
     --include-package=core.nuitka_cuda_patch^
     --include-package=core.ocr_processor^
     --include-package=core.runtime_cuda_patch^
