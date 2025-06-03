@@ -177,24 +177,55 @@ if "!VS_BUILD_TOOLS_FOUND!"=="0" (
     set /p "INSTALL_VS=Do you want to install Visual Studio Build Tools? (y/n): "
     
     if /i "!INSTALL_VS!"=="y" (
-        echo Installing Visual Studio Build Tools 2022...
+        echo Installing Visual Studio Build Tools 2022 with Windows SDK...
         echo This may take several minutes...
         
-        winget install Microsoft.VisualStudio.2022.BuildTools --silent --accept-package-agreements --accept-source-agreements --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22000 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.ATL"
+        REM Install with Windows 11 SDK (required for Nuitka MSVC support)
+        winget install Microsoft.VisualStudio.2022.BuildTools --silent --accept-package-agreements --accept-source-agreements --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22000 --add Microsoft.VisualStudio.Component.Windows10SDK.19041 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.ATL"
         
         if !ERRORLEVEL! NEQ 0 (
             echo Failed to install Visual Studio Build Tools!
+            echo.
+            echo Alternative: You can manually install Visual Studio Build Tools and ensure you include:
+            echo - MSVC v143 - VS 2022 C++ x64/x86 build tools
+            echo - Windows 11 SDK (10.0.22000 or later)
+            echo - Windows 10 SDK (10.0.19041 or later)
+            echo.
             echo Continuing with Nuitka's automatic MinGW-w64 fallback...
         ) else (
-            echo Visual Studio Build Tools installed successfully!
+            echo Visual Studio Build Tools with Windows SDK installed successfully!
             call refreshenv 2>nul || echo Warning: refreshenv not available
             set "VS_BUILD_TOOLS_FOUND=1"
         )
     ) else (
         echo Skipping VS Build Tools installation. Nuitka will use MinGW-w64 fallback.
     )
+) else (
+    echo Checking Windows SDK availability for MSVC...
+    REM Check if Windows SDK is available
+    set "WINDOWS_SDK_FOUND=0"
+    for %%s in (
+        "C:\Program Files (x86)\Windows Kits\10\Include\*"
+        "C:\Program Files\Windows Kits\10\Include\*"
+    ) do (
+        if exist "%%s\um\windows.h" (
+            echo Found Windows SDK at: %%s
+            set "WINDOWS_SDK_FOUND=1"
+        )
+    )
+    
+    if "!WINDOWS_SDK_FOUND!"=="0" (
+        echo.
+        echo WARNING: Visual Studio Build Tools found but Windows SDK is missing!
+        echo This may cause Nuitka to fall back to MinGW instead of using MSVC.
+        echo.
+        echo To fix this, install Windows SDK via:
+        echo 1. Visual Studio Installer ^> Modify ^> Individual Components
+        echo 2. Check "Windows 11 SDK" or "Windows 10 SDK"
+        echo 3. Or run: winget install Microsoft.WindowsSDK.10.0.22000
+        echo.
+    )
 )
-
 REM Now check for MSVC compiler
 set "MSVC_FOUND=0"
 where cl >nul 2>nul
