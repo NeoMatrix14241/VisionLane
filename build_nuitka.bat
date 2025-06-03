@@ -1,9 +1,392 @@
 @echo off
+setlocal enabledelayedexpansion
 
 title App Builder: VisionLane OCR Application (Nuitka)
 REM --------------------------------------------------------
 REM VisionLane Build Script (Nuitka version)
 REM --------------------------------------------------------
+
+REM Check for existing build tools and ask user about installation, cleanup first
+rmdir /s /q temp_binaries 2>nul
+
+REM Check if cache_binaries.zip exists early to decide on prompts
+set "CACHE_BINARIES_AVAILABLE=0"
+if exist "%~dp0cache_binaries.zip" (
+    set "CACHE_BINARIES_AVAILABLE=1"
+    echo Found cache_binaries.zip - local cache tools available
+)
+
+REM Ask about downloading latest build tools at start (only if no local cache available)
+if "%CACHE_BINARIES_AVAILABLE%"=="0" (
+    echo.
+    echo No local cache_binaries.zip found.
+    echo Would you like to download the latest build tools including ccache and clcache?
+    echo This will provide faster compilation caching.
+    echo.
+    set /p "DOWNLOAD_TOOLS=Download latest build tools? (y/n): "
+    
+    if /i "!DOWNLOAD_TOOLS!"=="y" (
+        echo Downloading latest build tools...
+        REM Add download logic here if needed
+        echo Note: Manual download of cache_binaries.zip may be required
+    )
+    echo.
+)
+
+echo Checking for existing build tools...
+
+REM Check for complete Visual Studio Build Tools installation first
+set "VS_BUILD_TOOLS_FOUND=0"
+
+REM Method 1: Use vswhere.exe to find any VS installation with VC tools
+if exist "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" (
+    for /f "tokens=*" %%i in ('C:\Program Files ^(x86^)\Microsoft Visual Studio\Installer\vswhere.exe -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2^>nul') do (
+        if exist "%%i\VC\Tools\MSVC" (
+            echo Found Visual Studio installation with C++ tools at: %%i
+            set "VS_BUILD_TOOLS_FOUND=1"
+        )
+    )
+)
+
+REM Method 2: Check for manual installations in common paths
+if "!VS_BUILD_TOOLS_FOUND!"=="0" (
+    for %%p in (
+        "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC"
+        "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC"
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC"
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC"
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC"
+    ) do (
+        if exist "%%p" (
+            echo Found Visual Studio Build Tools at: %%p
+            set "VS_BUILD_TOOLS_FOUND=1"
+            
+            REM Set up MSVC environment for Nuitka - use the correct path
+            for %%v in ("%%p\*") do (
+                if exist "%%v\bin\Hostx64\x64\cl.exe" (
+                    echo Setting up MSVC environment for Nuitka...
+                    
+                    REM Find vcvars64.bat dynamically based on any year
+                    set "VCVARS_FOUND=0"
+                    
+                    REM Check x86 Program Files for any year
+                    for /d %%y in ("C:\Program Files (x86)\Microsoft Visual Studio\*") do (
+                        if exist "%%y\BuildTools\VC\Auxiliary\Build\vcvars64.bat" (
+                            echo Found vcvars64.bat at %%y\BuildTools
+                            call "%%y\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul
+                            set "VCVARS_FOUND=1"
+                            goto :vcvars_done
+                        )
+                        if exist "%%y\Community\VC\Auxiliary\Build\vcvars64.bat" (
+                            echo Found vcvars64.bat at %%y\Community
+                            call "%%y\Community\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul
+                            set "VCVARS_FOUND=1"
+                            goto :vcvars_done
+                        )
+                        if exist "%%y\Professional\VC\Auxiliary\Build\vcvars64.bat" (
+                            echo Found vcvars64.bat at %%y\Professional
+                            call "%%y\Professional\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul
+                            set "VCVARS_FOUND=1"
+                            goto :vcvars_done
+                        )
+                        if exist "%%y\Enterprise\VC\Auxiliary\Build\vcvars64.bat" (
+                            echo Found vcvars64.bat at %%y\Enterprise
+                            call "%%y\Enterprise\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul
+                            set "VCVARS_FOUND=1"
+                            goto :vcvars_done
+                        )
+                    )
+                    
+                    REM Check regular Program Files for any year
+                    if "!VCVARS_FOUND!"=="0" (
+                        for /d %%y in ("C:\Program Files\Microsoft Visual Studio\*") do (
+                            if exist "%%y\BuildTools\VC\Auxiliary\Build\vcvars64.bat" (
+                                echo Found vcvars64.bat at %%y\BuildTools
+                                call "%%y\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul
+                                set "VCVARS_FOUND=1"
+                                goto :vcvars_done
+                            )
+                            if exist "%%y\Community\VC\Auxiliary\Build\vcvars64.bat" (
+                                echo Found vcvars64.bat at %%y\Community
+                                call "%%y\Community\VC\Auxiliary\Build\vcvars64.bat" >nul 2>nul
+                                set "VCVARS_FOUND=1"
+                                goto :vcvars_done
+                            )
+                        )
+                    )
+                    
+                    :vcvars_done
+                    if "!VCVARS_FOUND!"=="0" (
+                        echo Warning: Could not find vcvars64.bat for MSVC environment setup
+                    )
+                    goto :vs_found
+                )
+            )
+        )
+    )
+)
+:vs_found
+
+REM If no complete build tools found, ask user if they want to install
+if "!VS_BUILD_TOOLS_FOUND!"=="0" (
+    echo.
+    echo Visual Studio Build Tools not found.
+    echo Installing VS Build Tools will enable clcache for faster MSVC compilation.
+    echo Without it, Nuitka will download MinGW-w64 automatically as fallback.
+    echo.
+    set /p "INSTALL_VS=Do you want to install Visual Studio Build Tools? (y/n): "
+    
+    if /i "!INSTALL_VS!"=="y" (
+        echo Installing Visual Studio Build Tools 2022...
+        echo This may take several minutes...
+        
+        winget install Microsoft.VisualStudio.2022.BuildTools --silent --accept-package-agreements --accept-source-agreements --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22000 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.ATL"
+        
+        if !ERRORLEVEL! NEQ 0 (
+            echo Failed to install Visual Studio Build Tools!
+            echo Continuing with Nuitka's automatic MinGW-w64 fallback...
+        ) else (
+            echo Visual Studio Build Tools installed successfully!
+            call refreshenv 2>nul || echo Warning: refreshenv not available
+            set "VS_BUILD_TOOLS_FOUND=1"
+        )
+    ) else (
+        echo Skipping VS Build Tools installation. Nuitka will use MinGW-w64 fallback.
+    )
+)
+
+REM Now check for MSVC compiler
+set "MSVC_FOUND=0"
+where cl >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo Found MSVC compiler (cl.exe)
+    set "MSVC_FOUND=1"
+) else (
+    REM Check common VS installation paths
+    for %%p in (
+        "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+    ) do (
+        if exist "%%p" (
+            echo Found MSVC compiler at %%p
+            set "MSVC_FOUND=1"
+            goto :msvc_found
+        )
+    )
+)
+:msvc_found
+
+REM Check for MinGW as fallback
+set "MINGW_FOUND=0"
+where gcc >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo Found MinGW compiler (gcc.exe)
+    set "MINGW_FOUND=1"
+)
+
+REM Check for ccache
+set "CCACHE_FOUND=0"
+where ccache >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo Found ccache for faster compilation
+    set "CCACHE_FOUND=1"
+    set "CCACHE_DIR=%USERPROFILE%\.ccache"
+)
+
+REM Check for clcache
+set "CLCACHE_FOUND=0"
+where clcache >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo Found clcache for faster compilation
+    set "CLCACHE_FOUND=1"
+    set "CLCACHE_DIR=%USERPROFILE%\.clcache"
+)
+
+REM Report compiler status
+if "%MSVC_FOUND%"=="1" (
+    echo Compiler Status: MSVC available (preferred)
+) else if "%MINGW_FOUND%"=="1" (
+    echo Compiler Status: MinGW available (fallback)
+) else (
+    echo Compiler Status: None found - Nuitka will download MinGW-w64 automatically
+)
+
+echo Proceeding with build...
+
+REM Install cache tools if not found
+if "%CCACHE_FOUND%"=="0" if "%CLCACHE_FOUND%"=="0" (
+    REM Check if cache_binaries.zip exists in project folder
+    if exist "%~dp0cache_binaries.zip" (
+        echo Found cache_binaries.zip, extracting cache tools...
+        
+        set "TEMP_BINARY_DIR=%~dp0temp_binaries"
+        
+        REM Clean existing temp directory if it exists with better handling
+        if exist "!TEMP_BINARY_DIR!" (
+            echo Cleaning existing temp_binaries directory...
+            
+            REM Show what processes might be using files in the directory
+            echo Checking for processes using files in temp_binaries...
+            for /f "tokens=2 delims=," %%a in ('tasklist /fo csv ^| findstr /i "ccache\|clcache\|python\|nuitka"') do (
+                echo Found potential process: %%a
+            )
+            
+            REM Check if any handles are open to our directory
+            echo Checking file handles...
+            handle.exe "!TEMP_BINARY_DIR!" 2>nul || echo Handle.exe not available for detailed analysis
+            
+            REM Try to kill any processes that might be using files in temp_binaries
+            taskkill /f /im ccache.exe 2>nul && echo Killed ccache.exe
+            taskkill /f /im clcache.exe 2>nul && echo Killed clcache.exe
+            
+            REM Wait for processes to terminate
+            timeout /t 2 /nobreak >nul
+            
+            REM Try to see what's preventing deletion
+            echo Attempting directory removal...
+            rmdir /s /q "!TEMP_BINARY_DIR!" 2>nul
+            if exist "!TEMP_BINARY_DIR!" (
+                echo Directory removal failed. Checking specific files...
+                dir "!TEMP_BINARY_DIR!" /a 2>nul
+                
+                REM Try to delete individual files to see which ones are locked
+                for %%f in ("!TEMP_BINARY_DIR!\*.*") do (
+                    del /f /q "%%f" 2>nul || echo File locked: %%f
+                )
+                
+                set "TEMP_BINARY_DIR=%~dp0temp_binaries_%RANDOM%"
+                echo Using alternative directory: !TEMP_BINARY_DIR!
+            ) else (
+                echo Directory successfully removed.
+            )
+        )
+        
+        REM Create temp_binaries directory
+        if not exist "!TEMP_BINARY_DIR!" mkdir "!TEMP_BINARY_DIR!"
+
+        REM Extract cache_binaries.zip using simple PowerShell command to temp_binaries subfolder...
+        
+        REM Try PowerShell with explicit module import first - extract directly to temp_binaries
+        powershell -command "Import-Module Microsoft.PowerShell.Archive -Force; Expand-Archive -Force '%~dp0cache_binaries.zip' '!TEMP_BINARY_DIR!'" 2>nul
+        
+        REM If that fails, try without explicit import - extract directly to temp_binaries
+        if not exist "!TEMP_BINARY_DIR!\ccache.exe" if not exist "!TEMP_BINARY_DIR!\clcache.exe" (
+            echo First method failed, trying alternative PowerShell extraction...
+            powershell -command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%~dp0cache_binaries.zip', '!TEMP_BINARY_DIR!')" 2>nul
+        )
+
+        REM No need to move files since they're extracted directly to temp_binaries
+        REM Add temp_binaries to PATH so Nuitka can find cache tools
+        set "PATH=!TEMP_BINARY_DIR!;%PATH%"
+        echo Added !TEMP_BINARY_DIR! to PATH for this session
+        
+        REM Check what we actually extracted
+        echo Checking extracted cache tools...
+        
+        REM Look for cache tools in subdirectories
+        for /f "delims=" %%f in ('dir /b /s "!TEMP_BINARY_DIR!\ccache.exe" 2^>nul') do (
+            echo - Found ccache.exe at %%f
+            for %%i in ("%%f") do set "CCACHE_PATH=%%~dpi"
+            set "PATH=!CCACHE_PATH!;%PATH%"
+            set "CCACHE_FOUND=1"
+            set "CCACHE_DIR=%USERPROFILE%\.ccache"
+            echo - Added ccache directory to PATH: !CCACHE_PATH!
+        )
+        
+        for /f "delims=" %%f in ('dir /b /s "!TEMP_BINARY_DIR!\clcache.exe" 2^>nul') do (
+            echo - Found clcache.exe at %%f
+            for %%i in ("%%f") do set "CLCACHE_PATH=%%~dpi"
+            set "PATH=!CLCACHE_PATH!;%PATH%"
+            set "CLCACHE_FOUND=1"
+            set "CLCACHE_DIR=%USERPROFILE%\.clcache"
+            echo - Added clcache directory to PATH: !CLCACHE_PATH!
+        )
+        
+        REM Verify PATH access with actual functionality test
+        echo.
+        echo Verifying cache tool functionality...
+        
+        REM Test clcache functionality
+        if "!CLCACHE_FOUND!"=="1" (
+            clcache -V >nul 2>nul
+            if !ERRORLEVEL! EQU 0 (
+                echo - clcache: functional and accessible
+            ) else (
+                echo - clcache: accessible but may have issues
+            )
+        )
+        
+        REM Test ccache functionality  
+        if "!CCACHE_FOUND!"=="1" (
+            ccache --version >nul 2>nul
+            if !ERRORLEVEL! EQU 0 (
+                echo - ccache: functional and accessible
+            ) else (
+                echo - ccache: accessible but may have issues
+            )
+        )
+        
+        REM Configure cache tools - prefer clcache for MSVC, set up both
+        if "!CLCACHE_FOUND!"=="1" if "%MSVC_FOUND%"=="1" if "!VS_BUILD_TOOLS_FOUND!"=="1" (
+            echo Using extracted clcache for MSVC compilation
+            set "CC=clcache"
+            set "CXX=clcache"
+        ) else if "!CCACHE_FOUND!"=="1" (
+            echo Using extracted ccache for compilation
+            if "%MSVC_FOUND%"=="1" (
+                set "CC=ccache cl"
+                set "CXX=ccache cl"
+            ) else (
+                set "CC=ccache gcc"
+                set "CXX=ccache g++"
+            )
+        )
+        
+        REM Check if we found any cache tools in extracted files
+        if "!CCACHE_FOUND!"=="1" (
+            if "!CLCACHE_FOUND!"=="1" (
+                echo Both ccache and clcache successfully extracted and configured!
+            ) else (
+                echo ccache successfully extracted and configured!
+            )
+            goto :cache_tools_ready
+        ) else if "!CLCACHE_FOUND!"=="1" (
+            echo clcache successfully extracted and configured!
+            goto :cache_tools_ready
+        ) else (
+            echo No cache tools found in extracted temp_binaries directory.
+            echo Please check that cache_binaries.zip contains ccache.exe and/or clcache.exe
+            goto :cache_tools_ready
+        )
+    ) else (
+        echo cache_binaries.zip not found in project directory.
+        echo Cache tools will not be available for this build.
+        goto :cache_tools_ready
+    )
+) else (
+    echo Using existing cache tools found in system PATH
+    if "%CLCACHE_FOUND%"=="1" (
+        echo Using existing clcache installation
+        set "CC=clcache"
+        set "CXX=clcache"
+    ) else if "%CCACHE_FOUND%"=="1" (
+        echo Using existing ccache installation
+        if "%MSVC_FOUND%"=="1" (
+            set "CC=ccache cl"
+            set "CXX=ccache cl"
+        ) else (
+            set "CC=ccache gcc"
+            set "CXX=ccache g++"
+        )
+    )
+    goto :cache_tools_ready
+)
+
+:cache_tools_ready
 
 REM IMPORTANT: DO NOT REMOVE ANY --include-package=... LINES BELOW!
 REM These are required for Nuitka to bundle PyQt6, torch, doctr, and all dependencies.
@@ -25,8 +408,52 @@ IF %ERRORLEVEL% NEQ 0 (
 
 REM Build with Nuitka
 echo Building application with Nuitka...
+echo.
+echo === Build Environment Report ===
+
+REM Show what compiler Nuitka will likely use
+if "%MSVC_FOUND%"=="1" (
+    echo Nuitka will prefer: MSVC compiler (cl.exe)
+    if defined CC (
+        echo Cache tool: !CC!
+    ) else (
+        echo Cache tool: None configured
+    )
+) else if "%MINGW_FOUND%"=="1" (
+    echo Nuitka will use: Existing MinGW compiler
+    if defined CC (
+        echo Cache tool: !CC!
+    ) else (
+        echo Cache tool: None configured
+    )
+) else (
+    echo Nuitka will: Download and use MinGW-w64 automatically
+    if "%CCACHE_FOUND%"=="1" (
+        echo Cache tool: ccache available for integration
+    ) else (
+        echo Cache tool: None available
+    )
+)
+
+REM Show available cache tools in PATH
+echo.
+echo Available cache tools in PATH:
+where ccache >nul 2>nul && echo - ccache: available
+where clcache >nul 2>nul && echo - clcache: available
+
+REM Show environment variables that affect compilation
+echo.
+echo Environment Variables:
+if defined CC echo   CC=!CC!
+if defined CXX echo   CXX=!CXX!
+if defined CCACHE_DIR echo   CCACHE_DIR=!CCACHE_DIR!
+if defined CLCACHE_DIR echo   CLCACHE_DIR=!CLCACHE_DIR!
+echo ================================
+echo.
+
 .\.venv\Scripts\python.exe -m nuitka^
     --standalone^
+    --show-progress^
     --nofollow-import-to=onnx^
     --follow-import-to=doctr^
     --enable-plugin=pylint-warnings^
@@ -132,12 +559,38 @@ echo Building application with Nuitka...
     --windows-console-mode=force^
     main.py
 
+rmdir /s /q temp_binaries 2>nul
+
 IF %ERRORLEVEL% NEQ 0 (
-    echo Build failed! Check the error messages above.
+    echo.
+    echo === Build Failed Analysis ===
+    echo Check the output above for compiler-related errors.
+    echo If you see MinGW download messages, Nuitka used its fallback.
+    echo If you see MSVC-related messages, it used your installed compiler.
     pause
     exit /b 1
 ) ELSE (
-    echo Build complete!
+    echo.
+    echo === Build Success Analysis ===
+    
+    REM Check the build log for compiler evidence
+    if exist "dist_nuitka\main.build\build.log" (
+        echo Checking build log for compiler usage...
+        findstr /i "cl.exe mingw gcc clang" "dist_nuitka\main.build\build.log" > nul
+        if !ERRORLEVEL! EQU 0 (
+            echo Found compiler references in build log:
+            findstr /i "cl.exe mingw gcc clang" "dist_nuitka\main.build\build.log"
+        )
+    )
+    
+    REM Check for cache usage evidence
+    if exist "dist_nuitka\main.build\build.log" (
+        findstr /i "ccache clcache cache" "dist_nuitka\main.build\build.log" > nul
+        if !ERRORLEVEL! EQU 0 (
+            echo Found cache tool usage:
+            findstr /i "ccache clcache cache" "dist_nuitka\main.build\build.log"
+        )
+    )
     
     REM Performing post-build fixes for PyTorch detection
     echo Performing post-build library copying and fixes...

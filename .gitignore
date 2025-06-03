@@ -18,6 +18,7 @@ input/
 output/
 logs/
 *.egg-info/
+temp_binaries/
 
 # IDE settings
 .vscode/
