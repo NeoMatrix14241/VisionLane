@@ -10,7 +10,7 @@ rmdir /s /q temp_binaries 2>nul
 
 :: Set Python and Pip executables to use the virtual environment
 set "PYTHON_EXEC=.venv\Scripts\python.exe"
-set "PIP_EXEC=.venv\Scripts\pip.exe"
+set "PIP_EXEC=".venv\Scripts\pip.exe"
 
 :: Set colors for output
 set "GREEN=[32m"
@@ -209,7 +209,24 @@ if not defined score_line (
 REM Try to extract just the score number for comparison
 set "score_number="
 if defined score_line (
-    for /f "tokens=6 delims= " %%s in ("!score_line!") do set "score_number=%%s"
+    REM Extract the score number using a more precise method
+    for /f "tokens=1,2,3,4,5,6,7,8,9" %%a in ("!score_line!") do (
+        set "word1=%%a"
+        set "word2=%%b"
+        set "word3=%%c"
+        set "word4=%%d"
+        set "word5=%%e"
+        set "word6=%%f"
+        set "word7=%%g"
+        set "word8=%%h"
+        set "word9=%%i"
+        
+        REM Look for the pattern "rated at X.XX/10"
+        if "%%e"=="rated" if "%%f"=="at" (
+            set "score_with_slash=%%g"
+            for /f "tokens=1 delims=/" %%s in ("!score_with_slash!") do set "score_number=%%s"
+        )
+    )
 )
 
 :: Generate summary
