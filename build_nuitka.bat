@@ -1,10 +1,48 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM Add error handling to prevent script from closing unexpectedly
+set "ORIGINAL_ERRORLEVEL_HANDLING="
+if defined ERRORLEVEL set "ORIGINAL_ERRORLEVEL_HANDLING=%ERRORLEVEL%"
+
 title App Builder: VisionLane OCR Application (Nuitka)
 REM --------------------------------------------------------
 REM VisionLane Build Script (Nuitka version)
 REM --------------------------------------------------------
+
+echo Starting VisionLane OCR Build Process...
+echo Script is running from: %~dp0
+echo Current directory: %CD%
+echo.
+
+REM Clean up any previous temp_binaries from interrupted builds
+echo Cleaning up any previous temporary files...
+rmdir /s /q temp_binaries 2>nul
+if exist temp_binaries (
+    echo Warning: Could not remove existing temp_binaries directory
+) else (
+    echo Previous temp_binaries cleaned up successfully
+)
+
+REM Check for critical dependencies first
+if not exist ".venv\Scripts\python.exe" (
+    echo ERROR: Virtual environment not found at .venv\Scripts\python.exe
+    echo Please ensure you have created and activated a virtual environment.
+    echo.
+    echo Press any key to exit...
+    pause >nul
+    exit /b 1
+)
+
+if not exist "main.py" (
+    echo ERROR: main.py not found in current directory
+    echo Please ensure you are running this script from the project root.
+    echo Current directory: %CD%
+    echo.
+    echo Press any key to exit...
+    pause >nul
+    exit /b 1
+)
 
 REM Check for existing build tools and ask user about installation, cleanup first
 rmdir /s /q temp_binaries 2>nul
@@ -204,177 +242,175 @@ if %ERRORLEVEL% EQU 0 (
     echo Found clcache for faster compilation
     set "CLCACHE_FOUND=1"
     set "CLCACHE_DIR=%USERPROFILE%\.clcache"
+) else (
+    REM Check if clcache exists in common installation paths
+    for %%p in ("C:\Python*\Scripts\clcache.exe" "%USERPROFILE%\AppData\Local\Programs\Python\Python*\Scripts\clcache.exe" "%LOCALAPPDATA%\Programs\Python\Python*\Scripts\clcache.exe") do (
+        if exist "%%p" (
+            echo Found clcache at: %%p
+            for %%i in ("%%p") do set "PATH=%%~dpi;%PATH%"
+            set "CLCACHE_FOUND=1"
+            set "CLCACHE_DIR=%USERPROFILE%\.clcache"
+            goto :clcache_found
+        )
+    )
 )
+:clcache_found
 
 REM Report compiler status
+echo.
+echo === Compiler Detection Summary ===
 if "%MSVC_FOUND%"=="1" (
-    echo Compiler Status: MSVC available (preferred)
+    echo Primary Compiler: MSVC available (preferred)
 ) else if "%MINGW_FOUND%"=="1" (
-    echo Compiler Status: MinGW available (fallback)
+    echo Primary Compiler: MinGW available (fallback)
 ) else (
-    echo Compiler Status: None found - Nuitka will download MinGW-w64 automatically
+    echo Primary Compiler: None found - Nuitka will download MinGW-w64 automatically
 )
+
+if "%CCACHE_FOUND%"=="1" (
+    echo Cache Tool: ccache available in PATH
+) else if "%CLCACHE_FOUND%"=="1" (
+    echo Cache Tool: clcache available in PATH
+) else (
+    echo Cache Tool: None found in PATH
+)
+echo ================================
 
 echo Proceeding with build...
 
-REM Install cache tools if not found
-if "%CCACHE_FOUND%"=="0" if "%CLCACHE_FOUND%"=="0" (
-    REM Check if cache_binaries.zip exists in project folder
-    if exist "%~dp0cache_binaries.zip" (
-        echo Found cache_binaries.zip, extracting cache tools...
-        
-        set "TEMP_BINARY_DIR=%~dp0temp_binaries"
-        
-        REM Clean existing temp directory if it exists with better handling
-        if exist "!TEMP_BINARY_DIR!" (
-            echo Cleaning existing temp_binaries directory...
-            
-            REM Show what processes might be using files in the directory
-            echo Checking for processes using files in temp_binaries...
-            for /f "tokens=2 delims=," %%a in ('tasklist /fo csv ^| findstr /i "ccache\|clcache\|python\|nuitka"') do (
-                echo Found potential process: %%a
-            )
-            
-            REM Check if any handles are open to our directory
-            echo Checking file handles...
-            handle.exe "!TEMP_BINARY_DIR!" 2>nul || echo Handle.exe not available for detailed analysis
-            
-            REM Try to kill any processes that might be using files in temp_binaries
-            taskkill /f /im ccache.exe 2>nul && echo Killed ccache.exe
-            taskkill /f /im clcache.exe 2>nul && echo Killed clcache.exe
-            
-            REM Wait for processes to terminate
-            timeout /t 2 /nobreak >nul
-            
-            REM Try to see what's preventing deletion
-            echo Attempting directory removal...
-            rmdir /s /q "!TEMP_BINARY_DIR!" 2>nul
-            if exist "!TEMP_BINARY_DIR!" (
-                echo Directory removal failed. Checking specific files...
-                dir "!TEMP_BINARY_DIR!" /a 2>nul
-                
-                REM Try to delete individual files to see which ones are locked
-                for %%f in ("!TEMP_BINARY_DIR!\*.*") do (
-                    del /f /q "%%f" 2>nul || echo File locked: %%f
-                )
-                
-                set "TEMP_BINARY_DIR=%~dp0temp_binaries_%RANDOM%"
-                echo Using alternative directory: !TEMP_BINARY_DIR!
-            ) else (
-                echo Directory successfully removed.
+REM Always try to extract cache tools if cache_binaries.zip exists, regardless of what's in PATH
+if exist "%~dp0cache_binaries.zip" (
+    echo Found cache_binaries.zip, extracting cache tools...
+    
+    set "TEMP_BINARY_DIR=%~dp0temp_binaries"
+    
+    REM Clean existing temp directory if it exists
+    if exist "!TEMP_BINARY_DIR!" (
+        echo Cleaning existing temp_binaries directory...
+        rmdir /s /q "!TEMP_BINARY_DIR!" 2>nul
+    )
+    
+    REM Create temp_binaries directory
+    if not exist "!TEMP_BINARY_DIR!" mkdir "!TEMP_BINARY_DIR!"
+    echo Created directory: !TEMP_BINARY_DIR!
+
+    REM Extract cache_binaries.zip with better error handling
+    echo Extracting cache_binaries.zip...
+    
+    REM Method 1: Try PowerShell expansion
+    echo Attempting PowerShell extraction...
+    powershell -Command "try { Expand-Archive -Path '%~dp0cache_binaries.zip' -DestinationPath '!TEMP_BINARY_DIR!' -Force; Write-Host 'PowerShell extraction successful' } catch { Write-Host 'PowerShell extraction failed:' $_.Exception.Message; exit 1 }"
+    
+    if !ERRORLEVEL! NEQ 0 (
+        echo PowerShell extraction failed, trying alternative method...
+        REM Method 2: Try 7zip if available
+        where 7z >nul 2>nul && (
+            echo Trying 7zip extraction...
+            7z x "%~dp0cache_binaries.zip" -o"!TEMP_BINARY_DIR!" -y >nul 2>nul
+            if !ERRORLEVEL! EQU 0 echo 7zip extraction successful
+        ) || (
+            echo 7zip not available, trying WinRAR...
+            REM Method 3: Try WinRAR if available
+            where winrar >nul 2>nul && (
+                winrar x "%~dp0cache_binaries.zip" "!TEMP_BINARY_DIR!\" >nul 2>nul
+                if !ERRORLEVEL! EQU 0 echo WinRAR extraction successful
+            ) || (
+                echo No suitable extraction tool found. Manual extraction may be required.
             )
         )
-        
-        REM Create temp_binaries directory
-        if not exist "!TEMP_BINARY_DIR!" mkdir "!TEMP_BINARY_DIR!"
+    )
 
-        REM Extract cache_binaries.zip using simple PowerShell command to temp_binaries subfolder...
-        
-        REM Try PowerShell with explicit module import first - extract directly to temp_binaries
-        powershell -command "Import-Module Microsoft.PowerShell.Archive -Force; Expand-Archive -Force '%~dp0cache_binaries.zip' '!TEMP_BINARY_DIR!'" 2>nul
-        
-        REM If that fails, try without explicit import - extract directly to temp_binaries
-        if not exist "!TEMP_BINARY_DIR!\ccache.exe" if not exist "!TEMP_BINARY_DIR!\clcache.exe" (
-            echo First method failed, trying alternative PowerShell extraction...
-            powershell -command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%~dp0cache_binaries.zip', '!TEMP_BINARY_DIR!')" 2>nul
+    REM Show what was extracted
+    echo.
+    echo Contents of temp_binaries:
+    if exist "!TEMP_BINARY_DIR!" (
+        dir "!TEMP_BINARY_DIR!" /s /b 2>nul
+        if !ERRORLEVEL! NEQ 0 (
+            echo No files found in temp_binaries directory
         )
-
-        REM No need to move files since they're extracted directly to temp_binaries
-        REM Add temp_binaries to PATH so Nuitka can find cache tools
-        set "PATH=!TEMP_BINARY_DIR!;%PATH%"
-        echo Added !TEMP_BINARY_DIR! to PATH for this session
-        
-        REM Check what we actually extracted
-        echo Checking extracted cache tools...
-        
-        REM Look for cache tools in subdirectories
-        for /f "delims=" %%f in ('dir /b /s "!TEMP_BINARY_DIR!\ccache.exe" 2^>nul') do (
-            echo - Found ccache.exe at %%f
-            for %%i in ("%%f") do set "CCACHE_PATH=%%~dpi"
+    ) else (
+        echo temp_binaries directory was not created
+    )
+    
+    REM Add temp_binaries and all subdirectories to PATH
+    set "PATH=!TEMP_BINARY_DIR!;%PATH%"
+    echo Added !TEMP_BINARY_DIR! to PATH
+    
+    REM Look for cache tools recursively
+    echo.
+    echo Searching for cache tools in extracted files...
+    
+    for /f "delims=" %%f in ('dir /b /s "!TEMP_BINARY_DIR!\ccache*.exe" 2^>nul') do (
+        echo - Found ccache at: %%f
+        for %%i in ("%%f") do (
+            set "CCACHE_PATH=%%~dpi"
             set "PATH=!CCACHE_PATH!;%PATH%"
             set "CCACHE_FOUND=1"
             set "CCACHE_DIR=%USERPROFILE%\.ccache"
             echo - Added ccache directory to PATH: !CCACHE_PATH!
         )
-        
-        for /f "delims=" %%f in ('dir /b /s "!TEMP_BINARY_DIR!\clcache.exe" 2^>nul') do (
-            echo - Found clcache.exe at %%f
-            for %%i in ("%%f") do set "CLCACHE_PATH=%%~dpi"
+    )
+    
+    for /f "delims=" %%f in ('dir /b /s "!TEMP_BINARY_DIR!\clcache*.exe" 2^>nul') do (
+        echo - Found clcache at: %%f
+        for %%i in ("%%f") do (
+            set "CLCACHE_PATH=%%~dpi"
             set "PATH=!CLCACHE_PATH!;%PATH%"
             set "CLCACHE_FOUND=1"
             set "CLCACHE_DIR=%USERPROFILE%\.clcache"
             echo - Added clcache directory to PATH: !CLCACHE_PATH!
         )
-        
-        REM Verify PATH access with actual functionality test
-        echo.
-        echo Verifying cache tool functionality...
-        
-        REM Test clcache functionality
-        if "!CLCACHE_FOUND!"=="1" (
-            clcache -V >nul 2>nul
-            if !ERRORLEVEL! EQU 0 (
-                echo - clcache: functional and accessible
-            ) else (
-                echo - clcache: accessible but may have issues
-            )
-        )
-        
-        REM Test ccache functionality  
-        if "!CCACHE_FOUND!"=="1" (
-            ccache --version >nul 2>nul
-            if !ERRORLEVEL! EQU 0 (
-                echo - ccache: functional and accessible
-            ) else (
-                echo - ccache: accessible but may have issues
-            )
-        )
-        
-        REM Configure cache tools - prefer clcache for MSVC, set up both
-        if "!CLCACHE_FOUND!"=="1" if "%MSVC_FOUND%"=="1" if "!VS_BUILD_TOOLS_FOUND!"=="1" (
-            echo Using extracted clcache for MSVC compilation
-            set "CC=clcache"
-            set "CXX=clcache"
-        ) else if "!CCACHE_FOUND!"=="1" (
-            echo Using extracted ccache for compilation
-            if "%MSVC_FOUND%"=="1" (
-                set "CC=ccache cl"
-                set "CXX=ccache cl"
-            ) else (
-                set "CC=ccache gcc"
-                set "CXX=ccache g++"
-            )
-        )
-        
-        REM Check if we found any cache tools in extracted files
-        if "!CCACHE_FOUND!"=="1" (
-            if "!CLCACHE_FOUND!"=="1" (
-                echo Both ccache and clcache successfully extracted and configured!
-            ) else (
-                echo ccache successfully extracted and configured!
-            )
-            goto :cache_tools_ready
-        ) else if "!CLCACHE_FOUND!"=="1" (
-            echo clcache successfully extracted and configured!
-            goto :cache_tools_ready
-        ) else (
-            echo No cache tools found in extracted temp_binaries directory.
-            echo Please check that cache_binaries.zip contains ccache.exe and/or clcache.exe
-            goto :cache_tools_ready
-        )
-    ) else (
-        echo cache_binaries.zip not found in project directory.
-        echo Cache tools will not be available for this build.
-        goto :cache_tools_ready
     )
-) else (
-    echo Using existing cache tools found in system PATH
-    if "%CLCACHE_FOUND%"=="1" (
-        echo Using existing clcache installation
+    
+    REM Verify PATH accessibility for extracted tools
+    echo.
+    echo Verifying PATH accessibility of extracted tools:
+    where ccache >nul 2>nul && (
+        echo - ccache: accessible in PATH
+        ccache --version 2>nul | findstr /i "version" && echo   → ccache version check passed
+    ) || (
+        echo - ccache: not accessible in PATH
+    )
+    
+    where clcache >nul 2>nul && (
+        echo - clcache: accessible in PATH
+        clcache --help >nul 2>nul && echo   → clcache help check passed
+    ) || (
+        echo - clcache: not accessible in PATH
+    )
+    
+    REM Also look for any .exe files to see what's actually in the zip
+    echo.
+    echo All .exe files found in extraction:
+    dir /b /s "!TEMP_BINARY_DIR!\*.exe" 2>nul
+    
+    REM Test functionality of extracted tools
+    echo.
+    echo Testing extracted cache tools...
+    
+    if "!CCACHE_FOUND!"=="1" (
+        ccache --version >nul 2>nul && (
+            echo - ccache: functional and accessible
+        ) || (
+            echo - ccache: found but not functional
+        )
+    )
+    
+    if "!CLCACHE_FOUND!"=="1" (
+        clcache --help >nul 2>nul && (
+            echo - clcache: functional and accessible
+        ) || (
+            echo - clcache: found but not functional
+        )
+    )
+    
+    REM Configure cache tools based on what we found
+    if "!CLCACHE_FOUND!"=="1" if "%MSVC_FOUND%"=="1" (
+        echo Configuring extracted clcache for MSVC compilation
         set "CC=clcache"
         set "CXX=clcache"
-    ) else if "%CCACHE_FOUND%"=="1" (
-        echo Using existing ccache installation
+    ) else if "!CCACHE_FOUND!"=="1" (
+        echo Configuring extracted ccache for compilation
         if "%MSVC_FOUND%"=="1" (
             set "CC=ccache cl"
             set "CXX=ccache cl"
@@ -383,10 +419,38 @@ if "%CCACHE_FOUND%"=="0" if "%CLCACHE_FOUND%"=="0" (
             set "CXX=ccache g++"
         )
     )
-    goto :cache_tools_ready
+    
+    if "!CCACHE_FOUND!"=="1" if "!CLCACHE_FOUND!"=="1" (
+        echo Both ccache and clcache successfully extracted and configured!
+    ) else if "!CCACHE_FOUND!"=="1" (
+        echo ccache successfully extracted and configured!
+    ) else if "!CLCACHE_FOUND!"=="1" (
+        echo clcache successfully extracted and configured!
+    ) else (
+        echo WARNING: No cache tools found in cache_binaries.zip
+        echo Please verify the contents of cache_binaries.zip
+    )
+) else (
+    echo cache_binaries.zip not found in project directory.
 )
 
-:cache_tools_ready
+REM Final cache tool configuration for existing tools
+if not defined CC (
+    if "%CLCACHE_FOUND%"=="1" if "%MSVC_FOUND%"=="1" (
+        echo Configuring existing clcache for MSVC compilation
+        set "CC=clcache"
+        set "CXX=clcache"
+    ) else if "%CCACHE_FOUND%"=="1" (
+        echo Configuring existing ccache for compilation
+        if "%MSVC_FOUND%"=="1" (
+            set "CC=ccache cl"
+            set "CXX=ccache cl"
+        ) else (
+            set "CC=ccache gcc"
+            set "CXX=ccache g++"
+        )
+    )
+)
 
 REM IMPORTANT: DO NOT REMOVE ANY --include-package=... LINES BELOW!
 REM These are required for Nuitka to bundle PyQt6, torch, doctr, and all dependencies.
@@ -401,28 +465,32 @@ echo Downloading DocTR models if not present...
 .\.venv\Scripts\python.exe verify_models.py
 
 IF %ERRORLEVEL% NEQ 0 (
-    echo Failed to download doctr models. Aborting build.
-    pause
-    exit /b 1
+    echo ERROR: Failed to download doctr models. 
+    echo This could be due to network issues or missing dependencies.
+    echo.
+    echo Press any key to continue anyway, or Ctrl+C to abort...
+    pause >nul
+    echo Continuing build without model verification...
+    echo.
 )
 
 REM Build with Nuitka
 echo Building application with Nuitka...
 echo.
-echo === Build Environment Report ===
 
 REM Show what compiler Nuitka will likely use
+echo === Build Environment Report ===
 if "%MSVC_FOUND%"=="1" (
     echo Nuitka will prefer: MSVC compiler (cl.exe)
     if defined CC (
-        echo Cache tool: !CC!
+        echo Cache tool configured: !CC!
     ) else (
         echo Cache tool: None configured
     )
 ) else if "%MINGW_FOUND%"=="1" (
     echo Nuitka will use: Existing MinGW compiler
     if defined CC (
-        echo Cache tool: !CC!
+        echo Cache tool configured: !CC!
     ) else (
         echo Cache tool: None configured
     )
@@ -438,8 +506,8 @@ if "%MSVC_FOUND%"=="1" (
 REM Show available cache tools in PATH
 echo.
 echo Available cache tools in PATH:
-where ccache >nul 2>nul && echo - ccache: available
-where clcache >nul 2>nul && echo - clcache: available
+where ccache >nul 2>nul && echo - ccache: available || echo - ccache: not available
+where clcache >nul 2>nul && echo - clcache: available || echo - clcache: not available
 
 REM Show environment variables that affect compilation
 echo.
@@ -449,60 +517,52 @@ if defined CXX echo   CXX=!CXX!
 if defined CCACHE_DIR echo   CCACHE_DIR=!CCACHE_DIR!
 if defined CLCACHE_DIR echo   CLCACHE_DIR=!CLCACHE_DIR!
 
-REM Predict exactly which compiler Nuitka will use
+REM Predict exactly which compiler Nuitka will use - SAFE VERSION
 echo.
 echo === Nuitka Compiler Prediction ===
-
-REM Test compiler detection in order of Nuitka's preference
 echo Testing compiler availability in Nuitka's preference order:
 
 REM 1. Check if CC/CXX environment variables are set (highest priority)
 if defined CC (
     echo 1. CC environment variable set: !CC!
-    !CC! --version >nul 2>nul
-    if !ERRORLEVEL! EQU 0 (
+    echo   Testing CC command...
+    call :test_compiler "!CC!" && (
         echo   → CC command works - Nuitka will use: !CC!
         set "PREDICTED_COMPILER=!CC!"
         goto :compiler_predicted
-    ) else (
+    ) || (
         echo   → CC command failed - Nuitka will ignore this
     )
 )
 
 REM 2. Check for MSVC (cl.exe) in PATH
-where cl >nul 2>nul
-if !ERRORLEVEL! EQU 0 (
-    echo 2. MSVC (cl.exe) found in PATH
-    cl 2>nul | findstr /i "Microsoft" >nul
-    if !ERRORLEVEL! EQU 0 (
-        echo   → MSVC is functional - Nuitka will use: MSVC (cl.exe)
-        set "PREDICTED_COMPILER=MSVC (cl.exe)"
-        goto :compiler_predicted
-    )
+echo 2. Testing MSVC availability...
+call :test_compiler "cl" && (
+    echo   → MSVC is functional - Nuitka will use: MSVC (cl.exe)
+    set "PREDICTED_COMPILER=MSVC (cl.exe)"
+    goto :compiler_predicted
+) || (
+    echo   → MSVC not available or not functional
 )
 
 REM 3. Check for GCC in PATH
-where gcc >nul 2>nul
-if !ERRORLEVEL! EQU 0 (
-    echo 3. GCC found in PATH
-    gcc --version >nul 2>nul
-    if !ERRORLEVEL! EQU 0 (
-        echo   → GCC is functional - Nuitka will use: GCC
-        set "PREDICTED_COMPILER=GCC"
-        goto :compiler_predicted
-    )
+echo 3. Testing GCC availability...
+call :test_compiler "gcc" && (
+    echo   → GCC is functional - Nuitka will use: GCC
+    set "PREDICTED_COMPILER=GCC"
+    goto :compiler_predicted
+) || (
+    echo   → GCC not available or not functional
 )
 
 REM 4. Check for Clang in PATH
-where clang >nul 2>nul
-if !ERRORLEVEL! EQU 0 (
-    echo 4. Clang found in PATH
-    clang --version >nul 2>nul
-    if !ERRORLEVEL! EQU 0 (
-        echo   → Clang is functional - Nuitka will use: Clang
-        set "PREDICTED_COMPILER=Clang"
-        goto :compiler_predicted
-    )
+echo 4. Testing Clang availability...
+call :test_compiler "clang" && (
+    echo   → Clang is functional - Nuitka will use: Clang
+    set "PREDICTED_COMPILER=Clang"
+    goto :compiler_predicted
+) || (
+    echo   → Clang not available or not functional
 )
 
 REM 5. No compiler found - Nuitka will download MinGW
@@ -516,10 +576,14 @@ echo *** FINAL PREDICTION: Nuitka will use %PREDICTED_COMPILER% ***
 
 REM Show cache tool integration
 if defined CC (
-    if "!CC:ccache=!" neq "!CC!" (
+    echo !CC! | findstr /i "ccache" >nul && (
         echo *** CACHE: ccache will accelerate compilation ***
-    ) else if "!CC:clcache=!" neq "!CC!" (
-        echo *** CACHE: clcache will accelerate compilation ***
+    ) || (
+        echo !CC! | findstr /i "clcache" >nul && (
+            echo *** CACHE: clcache will accelerate compilation ***
+        ) || (
+            echo *** CACHE: No cache tool integration ***
+        )
     )
 ) else (
     echo *** CACHE: No cache tool integration ***
@@ -527,6 +591,23 @@ if defined CC (
 
 echo ================================
 echo.
+goto :start_compilation
+
+REM Safe compiler testing function
+:test_compiler
+where %~1 >nul 2>nul || exit /b 1
+%~1 --version >nul 2>nul && exit /b 0
+%~1 /? >nul 2>nul && exit /b 0
+exit /b 1
+
+:start_compilation
+echo Starting Nuitka compilation...
+echo This may take several minutes depending on your system and cache status.
+echo The script will NOT close automatically - please wait for completion.
+echo.
+
+REM Add timeout before starting compilation to ensure user sees the message
+timeout /t 3 /nobreak >nul
 
 .\.venv\Scripts\python.exe -m nuitka^
     --standalone^
@@ -636,16 +717,45 @@ echo.
     --windows-console-mode=force^
     main.py
 
+set "NUITKA_EXIT_CODE=%ERRORLEVEL%"
+echo.
+echo Nuitka process completed with exit code: %NUITKA_EXIT_CODE%
+echo.
+
+REM Always pause here regardless of success or failure
+echo ========================================
+echo Build process completed.
+echo Exit code: %NUITKA_EXIT_CODE%
+echo ========================================
+echo.
+
+echo Cleaning up temporary build files...
+rmdir /s /q temp_binaries 2>nul
+if exist temp_binaries (
+    echo Warning: Could not remove temp_binaries directory - may need manual cleanup
+) else (
+    echo Temporary files cleaned up successfully
+)
+
 rmdir /s /q temp_binaries 2>nul
 
-IF %ERRORLEVEL% NEQ 0 (
+IF %NUITKA_EXIT_CODE% NEQ 0 (
     echo.
     echo === Build Failed Analysis ===
+    echo Exit Code: %NUITKA_EXIT_CODE%
     echo Check the output above for compiler-related errors.
     echo If you see MinGW download messages, Nuitka used its fallback.
     echo If you see MSVC-related messages, it used your installed compiler.
-    pause
-    exit /b 1
+    echo.
+    echo Common issues:
+    echo - Missing dependencies in virtual environment
+    echo - Insufficient disk space
+    echo - Antivirus interference
+    echo - Network issues during MinGW download
+    echo.
+    echo Press any key to exit with error code %NUITKA_EXIT_CODE%...
+    pause >nul
+    exit /b %NUITKA_EXIT_CODE%
 ) ELSE (
     echo.
     echo === Build Success Analysis ===
@@ -735,6 +845,12 @@ IF %ERRORLEVEL% NEQ 0 (
     echo.
     echo Build complete! Your application is ready in the dist_nuitka folder.
     echo Run main.exe from the dist_nuitka\main.dist\ folder.
-    
-    pause
+    echo.
+    echo ========================================
+    echo SUCCESS: Build completed successfully!
+    echo ========================================
+    echo.
+    echo Press any key to exit...
+    pause >nul
+    exit /b 0
 )
