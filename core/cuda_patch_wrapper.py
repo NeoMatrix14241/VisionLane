@@ -58,18 +58,20 @@ def apply_all_cuda_patches():
             print(f"CUDA Patch Wrapper: DocTR torch setup loaded, PyTorch available: {_TORCH_AVAILABLE}")
         except ImportError:
             print("CUDA Patch Wrapper: Warning - Could not import DocTR torch setup")
-    # Step 5: Apply GPU monitoring patches
+    
+    # Step 5: Apply hardware monitoring patches for Nuitka
     try:
-        from .gpu_monitoring_patch import apply_gpu_monitoring_patches
-        apply_gpu_monitoring_patches()
-        print("CUDA Patch Wrapper: GPU monitoring patches applied successfully")
+        from .hardware_monitoring_patch import apply_hardware_monitoring_patches
+        apply_hardware_monitoring_patches()
+        print("CUDA Patch Wrapper: Hardware monitoring patches applied successfully")
     except ImportError:
         try:
-            from gpu_monitoring_patch import apply_gpu_monitoring_patches
-            apply_gpu_monitoring_patches()
-            print("CUDA Patch Wrapper: GPU monitoring patches applied successfully")
+            from hardware_monitoring_patch import apply_hardware_monitoring_patches
+            apply_hardware_monitoring_patches()
+            print("CUDA Patch Wrapper: Hardware monitoring patches applied successfully")
         except ImportError:
-            print("CUDA Patch Wrapper: Warning - Could not import GPU monitoring patches")
+            print("CUDA Patch Wrapper: Warning - Could not import hardware monitoring patches")
+    
     print("CUDA Patch Wrapper: All CUDA patches applied")
 def patch_torch_cuda():
     """Legacy torch CUDA monkey patch"""

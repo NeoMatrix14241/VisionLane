@@ -22,16 +22,6 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
-
-# Apply GPU monitoring patches early
-try:
-    from core.gpu_monitoring_patch import apply_gpu_monitoring_patches, get_gpu_info
-    apply_gpu_monitoring_patches()
-except ImportError:
-    print("Warning: Could not import GPU monitoring patches")
-    def get_gpu_info():
-        return {'gpus': [], 'count': 0, 'monitoring_available': False}
-
 # Now import project modules
 from core.ocr_processor import OCRProcessor
 from .processing_thread import OCRWorker
@@ -1361,15 +1351,63 @@ class MainWindow(QMainWindow):
             if success and not self.ocr.is_cancelled:
                 # Show completion message and wait for user response
                 QMessageBox.information(self, "Success", "Processing completed successfully!")
+            # --- ARCHIVING: Move files after processing is finished ---
+            if getattr(self, '_archive_enabled', False) and getattr(self, '_archive_dir', None):
+                try:
+                    mode = getattr(self, '_archive_mode', None)
+                    path = getattr(self, '_archive_path', None)
+                    archive_dir = getattr(self, '_archive_dir', None)
+                    
+                    if mode and path and archive_dir:
+                        logger.info("Starting archiving process...")
+                        
+                        if mode == 'single':
+                            src = Path(path)
+                            dst = archive_dir / src.name
+                            dst.parent.mkdir(parents=True, exist_ok=True)
+                            logger.info(f"Archiving single file: {src} -> {dst}")
+                            shutil.move(str(src), str(dst))
+                            logger.info(f"Successfully archived: {src.name}")
+                            
+                        elif mode == 'folder':
+                            src_folder = Path(path)
+                            archived_count = 0
+                            for file in src_folder.rglob("*"):
+                                if file.is_file():
+                                    # Preserve folder structure in archive
+                                    rel_path = file.relative_to(src_folder)
+                                    dst = archive_dir / rel_path
+                                    dst.parent.mkdir(parents=True, exist_ok=True)
+                                    logger.info(f"Archiving file: {file} -> {dst}")
+                                    shutil.move(str(file), str(dst))
+                                    archived_count += 1
+                            logger.info(f"Successfully archived {archived_count} files from folder")
+                            
+                        elif mode == 'pdf':
+                            src = Path(path)
+                            dst = archive_dir / src.name
+                            dst.parent.mkdir(parents=True, exist_ok=True)
+                            logger.info(f"Archiving PDF file: {src} -> {dst}")
+                            shutil.move(str(src), str(dst))
+                            logger.info(f"Successfully archived PDF: {src.name}")
+                            
+                        QMessageBox.information(self, "Archive Complete", "Files have been successfully moved to archive directory.")
+                        
+                except Exception as e:
+                    logger.error(f"Archiving failed: {e}")
+                    QMessageBox.warning(self, "Archive Error", f"Archiving failed: {str(e)}")
+
             # --- Refresh folder label after process finished (for folder tab) ---
             if self.tab_widget.currentIndex() == 1:
                 self._refresh_folder_label()
+
             # Only reset the state after user has seen completion message
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
             self.current_file_label.setText("No file processing")
             self.overall_progress_label.setText("Total Progress: 0/0")
             self.overall_progress.setValue(0)
+
             # Clear internal state
             self.processed_files = 0
             self.total_files = 0
@@ -1377,6 +1415,7 @@ class MainWindow(QMainWindow):
             self.file_tracking['current'] = None
             self.file_tracking['processed'].clear()
             QApplication.processEvents()
+            
         except Exception as e:
             logger.error(f"Error during process completion: {e}")
             self._reset_processing_state()
@@ -1458,7 +1497,7 @@ class MainWindow(QMainWindow):
                 logger.info(f"Files to process: {len(self._files_to_process)} ({len(files)} images + {len(pdfs)} PDFs)")
             else:
                 self._files_to_process = [path]
-            # --- Archiving logic ---
+            # --- Store archiving parameters for later use ---
             archive_enabled = False
             archive_dir = None
             if current_tab == 0:  # Single File
@@ -1470,6 +1509,7 @@ class MainWindow(QMainWindow):
             elif current_tab == 2:  # PDF
                 archive_enabled = self.pdf_archive_checkbox.isChecked()
                 archive_dir = self.pdf_archive_dir.text().strip()
+
             # Validate archive path if archiving is enabled
             if archive_enabled:
                 if not archive_dir:
@@ -1485,6 +1525,13 @@ class MainWindow(QMainWindow):
                         logger.error(f"Failed to create archive directory: {e}")
                         QMessageBox.critical(self, "Archiving Error", f"Failed to create archive directory:\n{e}")
                         return
+
+            # Store archiving parameters for use after processing
+            self._archive_enabled = archive_enabled
+            self._archive_dir = archive_dir
+            self._archive_mode = mode
+            self._archive_path = path
+
             # Reset state before starting
             self.processed_files = 0
             self.last_progress = 0
@@ -1515,67 +1562,8 @@ class MainWindow(QMainWindow):
                 logger.error(f"Failed to connect worker signals: {e}")
                 self._handle_error(f"Failed to start processing: {e}")
                 self.current_worker = None
-            # --- After processing, perform archiving if enabled ---
-            if archive_enabled:
-                try:
-                    def do_archive():
-                        try:
-                            if mode == 'single':
-                                src = Path(path)
-                                rel_path = src.name
-                                dst = archive_dir / rel_path
-                                logger.info(f"Archiving single file: {src} -> {dst}")
-                                shutil.move(str(src), str(dst))
-                                logger.info(f"Archived single file: {src} -> {dst}")
-                            elif mode == 'folder':
-                                src_folder = Path(path)
-                                for file in self._files_to_process:
-                                    file = Path(file)
-                                    rel_path = file.relative_to(src_folder)
-                                    dst = archive_dir / rel_path
-                                    dst.parent.mkdir(parents=True, exist_ok=True)
-                                    logger.info(f"Archiving file: {file} -> {dst}")
-                                    shutil.move(str(file), str(dst))
-                                    logger.info(f"Archived file: {file} -> {dst}")
-                            elif mode == 'pdf':
-                                src = Path(path)
-                                rel_path = src.name
-                                dst = archive_dir / rel_path
-                                logger.info(f"Archiving PDF: {src} -> {dst}")
-                                shutil.move(str(src), str(dst))
-                                logger.info(f"Archived PDF: {src} -> {dst}")
-                        except Exception as e:
-                            logger.error(f"Archiving error: {e}")
-                            QMessageBox.critical(self, "Archiving Error", f"Failed to archive files:\n{e}")
-                    def on_finished(success):
-                        if success and not self.ocr.is_cancelled:
-                            logger.info("Processing finished successfully, starting archiving.")
-                            do_archive()
-                        # --- Refresh folder label after processing (and archiving) ---
-                        if self.tab_widget.currentIndex() == 1:
-                            self._refresh_folder_label()
-                        self._process_finished(success)
-                    try:
-                        self.current_worker.signals.finished.disconnect()
-                    except Exception:
-                        pass
-                    self.current_worker.signals.finished.connect(on_finished)
-                except Exception as e:
-                    logger.error(f"Archiving setup error: {e}")
-                    QMessageBox.critical(self, "Archiving Error", f"Failed to setup archiving:\n{e}")
-            else:
-                # --- If not archiving, still refresh after processing ---
-                def on_finished_no_archive(success):
-                    if self.tab_widget.currentIndex() == 1:
-                        self._refresh_folder_label()
-                    self._process_finished(success)
-                try:
-                    self.current_worker.signals.finished.disconnect()
-                except Exception:
-                    pass
-                self.current_worker.signals.finished.connect(on_finished_no_archive)
         except Exception as e:
-            logger.error(f"Error starting processing: {e}", exc_info=True)
+            logger.error(f"Error in _start_processing: {e}")
             self._handle_error(str(e))
     def _get_processing_params(self, tab_index: int) -> tuple:
         """Get processing mode and path based on selected tab"""
@@ -1683,7 +1671,6 @@ class MainWindow(QMainWindow):
             # Show "Starting processing..." at the beginning
             if current_file == 0:
                 self.current_file_label.setText("Starting processing...")
-
             else:
                 # Show the correct file name based on progress
                 if hasattr(self, '_files_to_process') and len(self._files_to_process) >= current_file:
@@ -1734,19 +1721,68 @@ class MainWindow(QMainWindow):
             self.progress_monitor.stop()
             self.update_timer.stop()
             self.progress_timer.stop()
+
             # Keep progress visible while showing completion message
             if success and not self.ocr.is_cancelled:
                 # Show completion message and wait for user response
                 QMessageBox.information(self, "Success", "Processing completed successfully!")
+            # --- ARCHIVING: Move files after processing is finished ---
+            if getattr(self, '_archive_enabled', False) and getattr(self, '_archive_dir', None):
+                try:
+                    mode = getattr(self, '_archive_mode', None)
+                    path = getattr(self, '_archive_path', None)
+                    archive_dir = getattr(self, '_archive_dir', None)
+                    
+                    if mode and path and archive_dir:
+                        logger.info("Starting archiving process...")
+                        
+                        if mode == 'single':
+                            src = Path(path)
+                            dst = archive_dir / src.name
+                            dst.parent.mkdir(parents=True, exist_ok=True)
+                            logger.info(f"Archiving single file: {src} -> {dst}")
+                            shutil.move(str(src), str(dst))
+                            logger.info(f"Successfully archived: {src.name}")
+                            
+                        elif mode == 'folder':
+                            src_folder = Path(path)
+                            archived_count = 0
+                            for file in src_folder.rglob("*"):
+                                if file.is_file():
+                                    # Preserve folder structure in archive
+                                    rel_path = file.relative_to(src_folder)
+                                    dst = archive_dir / rel_path
+                                    dst.parent.mkdir(parents=True, exist_ok=True)
+                                    logger.info(f"Archiving file: {file} -> {dst}")
+                                    shutil.move(str(file), str(dst))
+                                    archived_count += 1
+                            logger.info(f"Successfully archived {archived_count} files from folder")
+                            
+                        elif mode == 'pdf':
+                            src = Path(path)
+                            dst = archive_dir / src.name
+                            dst.parent.mkdir(parents=True, exist_ok=True)
+                            logger.info(f"Archiving PDF file: {src} -> {dst}")
+                            shutil.move(str(src), str(dst))
+                            logger.info(f"Successfully archived PDF: {src.name}")
+                            
+                        QMessageBox.information(self, "Archive Complete", "Files have been successfully moved to archive directory.")
+                        
+                except Exception as e:
+                    logger.error(f"Archiving failed: {e}")
+                    QMessageBox.warning(self, "Archive Error", f"Archiving failed: {str(e)}")
+
             # --- Refresh folder label after process finished (for folder tab) ---
             if self.tab_widget.currentIndex() == 1:
                 self._refresh_folder_label()
+
             # Only reset the state after user has seen completion message
             self.start_button.setEnabled(True)
             self.cancel_button.setEnabled(False)
             self.current_file_label.setText("No file processing")
             self.overall_progress_label.setText("Total Progress: 0/0")
             self.overall_progress.setValue(0)
+
             # Clear internal state
             self.processed_files = 0
             self.total_files = 0
@@ -1754,60 +1790,74 @@ class MainWindow(QMainWindow):
             self.file_tracking['current'] = None
             self.file_tracking['processed'].clear()
             QApplication.processEvents()
+            
         except Exception as e:
             logger.error(f"Error during process completion: {e}")
             self._reset_processing_state()
     def _update_hardware_info(self):
-        """Update hardware information display with proper GPU monitoring"""
+        """Update hardware info display with better error handling and GPU memory tracking"""
         try:
-            # Get comprehensive GPU info using patched monitoring
-            gpu_info = get_gpu_info()
-
-            if gpu_info['monitoring_available'] and gpu_info['count'] > 0:
-                gpu_text_parts = []
-                for gpu in gpu_info['gpus']:
-                    gpu_name = gpu['name']
-                    utilization = gpu['utilization']
-                    memory_used = gpu['memory_used']
-                    memory_total = gpu['memory_total']
-                    temperature = gpu['temperature']
-
-                    # Format GPU information
-                    if memory_total > 0:
-                        memory_percent = (memory_used / memory_total) * 100
-                        gpu_text = f"{gpu_name}: {utilization:.1f}% util, {memory_used}MB/{memory_total}MB ({memory_percent:.1f}%)"
-                    else:
-                        gpu_text = f"{gpu_name}: {utilization:.1f}% util"
-
-                    if temperature > 0:
-                        gpu_text += f", {temperature}°C"
-
-                    gpu_text_parts.append(gpu_text)
-
-                gpu_text = " | ".join(gpu_text_parts)
-            else:
-                # Fallback for when monitoring is not available
-                try:
-                    import torch
-                    if torch.cuda.is_available():
-                        gpu_count = torch.cuda.device_count()
-                        if gpu_count > 0:
-                            gpu_text = f"{gpu_count} CUDA device(s) available"
+            if hasattr(self, 'ocr'):
+                device = getattr(self.ocr, 'device', 'cpu')  # Default to CPU if device not set
+                # GPU Mode
+                if device == "cuda" and torch.cuda.is_available():
+                    self.device_label.setText("Processing Device: GPU")
+                    try:
+                        # Try NVML first
+                        if self.nvml_initialized:
+                            import pynvml
+                            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                            util_rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                            gpu_util = util_rates.gpu if util_rates else 0
+                            used_mb = mem_info.used / (1024*1024)
+                            total_mb = mem_info.total / (1024*1024)
+                            self.cpu_label.setText(f"GPU Usage: {gpu_util}%")
+                            self.memory_label.setText(f"GPU Memory: {used_mb:.0f}MB/{total_mb:.0f}MB")
+                        # Try GPUtil as fallback
                         else:
-                            gpu_text = "No CUDA devices"
-                    else:
-                        gpu_text = "CUDA not available"
-                except Exception:
-                    gpu_text = "GPU monitoring unavailable"
-
-            # Update GPU info label
-            if hasattr(self, 'gpu_info_label'):
-                self.gpu_info_label.setText(f"GPU: {gpu_text}")
-
+                            import GPUtil
+                            gpus = GPUtil.getGPUs()
+                            if gpus:
+                                gpu = gpus[0]
+                                self.cpu_label.setText(f"GPU Usage: {gpu.load * 100:.1f}%")
+                                self.memory_label.setText(
+                                    f"GPU Memory: {gpu.memoryUsed:.0f}MB/{gpu.memoryTotal:.0f}MB"
+                                )
+                            else:
+                                raise RuntimeError("No GPU detected by GPUtil")
+                    except Exception:
+                        # Fallback to basic PyTorch info
+                        try:
+                            allocated = torch.cuda.memory_allocated(0) / (1024*1024)
+                            total = torch.cuda.get_device_properties(0).total_memory / (1024*1024)
+                            self.cpu_label.setText("GPU Usage: N/A")
+                            self.memory_label.setText(f"GPU Memory: {allocated:.0f}MB/{total:.0f}MB")
+                        except Exception as e:
+                            self.cpu_label.setText("GPU Usage: Error")
+                            self.memory_label.setText("GPU Memory: Error")
+                            logger.error(f"Failed to get GPU metrics: {e}")
+                # CPU Mode
+                else:
+                    self.device_label.setText("Processing Device: CPU")
+                    try:
+                        cpu_percent = psutil.cpu_percent(interval=None)
+                        memory = psutil.virtual_memory()
+                        self.cpu_label.setText(f"CPU Usage: {cpu_percent}%")
+                        self.memory_label.setText(f"Memory: {memory.percent}%")
+                    except Exception as e:
+                        logger.error(f"Failed to get CPU metrics: {e}")
+                        self.cpu_label.setText("CPU Usage: Error")
+                        self.memory_label.setText("Memory: Error")
+            else:
+                self.device_label.setText("Processing Device: Initializing...")
+                self.cpu_label.setText("Usage: N/A")
+                self.memory_label.setText("Memory: N/A")
         except Exception as e:
-            logger.error(f"Error updating hardware info: {e}")
-            if hasattr(self, 'gpu_info_label'):
-                self.gpu_info_label.setText("GPU: Monitoring error")
+            logger.error(f"Error in hardware monitoring: {e}")
+            self.device_label.setText("Device: Error")
+            self.cpu_label.setText("Usage: Error")
+            self.memory_label.setText("Memory: Error")
     def _handle_error(self, error_message: str):
         """Handle errors during processing"""
         try:

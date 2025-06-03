@@ -142,8 +142,7 @@ def load_modules_progressively(app):
         update_status("Loading PyQt6 core modules...", modules_to_load[current_step][1])
         import time
         time.sleep(0.1)  # Brief pause to show progress
-        current_step += 1
-        # 2. Load CUDA patches FIRST
+        current_step += 1        # 2. Load CUDA patches FIRST
         update_status("Loading CUDA compatibility patches...", modules_to_load[current_step][1])
         try:
             # Import for validation but don't use directly
@@ -153,6 +152,18 @@ def load_modules_progressively(app):
         except ImportError as e:
             update_status("⚠ CUDA patches not found", modules_to_load[current_step][1])
             print(f"CUDA patch import error: {e}")
+            time.sleep(0.1)
+        
+        current_step += 1
+        # 2.5. Load hardware monitoring patches for Nuitka compatibility
+        update_status("Loading hardware monitoring patches...", modules_to_load[current_step-1][1])
+        try:
+            from core import hardware_monitoring_patch
+            update_status("✓ Hardware monitoring patches loaded successfully", modules_to_load[current_step-1][1])
+            time.sleep(0.1)
+        except ImportError as e:
+            update_status("⚠ Hardware monitoring patches not found", modules_to_load[current_step-1][1])
+            print(f"Hardware monitoring patch import error: {e}")
             time.sleep(0.1)
         # 3. Load doctr_patch NEXT to ensure proper mocking
         update_status("Loading DocTR patch system...", modules_to_load[current_step][1])
@@ -226,14 +237,16 @@ def load_modules_progressively(app):
         else:
             update_status("Model validation skipped", modules_to_load[current_step][1])
         time.sleep(0.1)
-        current_step += 1        # 9. Load main application
-        update_status("Loading main application...", modules_to_load[current_step][1])
+        current_step += 1        # 9. Load main application        update_status("Loading main application...", modules_to_load[current_step][1])
         # Import for module loading
         import gui.main_window
         time.sleep(0.1)
         current_step += 1
         # 10. Finalize UI
-        update_status("Finalizing user interface...", modules_to_load[current_step][1])
+        if current_step < len(modules_to_load):
+            update_status("Finalizing user interface...", modules_to_load[current_step][1])
+        else:
+            update_status("Finalizing user interface...", 95)
         time.sleep(0.1)
         # Final status
         update_status("VisionLane OCR ready!", 100)

@@ -728,8 +728,8 @@ timeout /t 3 /nobreak >nul
     --include-package=core.cuda_env_patch^
     --include-package=core.cuda_patch_wrapper^
     --include-package=core.doctr_patch^
-    --include-package=core.doctr_torch_setup^
-    --include-package=core.gpu_monitoring_patch^
+    --include-package=core.doctr_torch_setup^    --include-package=core.gpu_monitoring_patch^
+    --include-package=core.hardware_monitoring_patch^
     --include-package=core.nuitka_cuda_patch^
     --include-package=core.ocr_processor^
     --include-package=core.runtime_cuda_patch^
@@ -738,8 +738,8 @@ timeout /t 3 /nobreak >nul
     --include-package-data=torchvision^
     --include-package-data=torchaudio^
     --include-package-data=PIL^
-    --include-package-data=ocrmypdf^
-    --include-package-data=GPUtil^
+    --include-package-data=ocrmypdf^    --include-package-data=GPUtil^
+    --include-package-data=core^
     --include-data-dir=.venv\Lib\site-packages\torch=torch^
     --include-data-dir=.venv\Lib\site-packages\torchvision=torchvision^
     --include-data-dir=.venv\Lib\site-packages\torch\lib=torch\lib^
