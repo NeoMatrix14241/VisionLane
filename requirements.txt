@@ -15,8 +15,7 @@
 # 2.) .venv\Scripts\activate
 # 3.) python.exe -m pip install --upgrade pip
 # 4.) pip install -r requirements.txt
-# 5.) python test_cuda.py (Test if CUDA is working)
-# 6.) python main.py
+# 5.) python main.py
 #
 # To deactivate and delete python virtual environment:
 # 1.) deactivate
