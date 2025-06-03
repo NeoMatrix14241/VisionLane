@@ -530,6 +530,7 @@ echo.
 
 .\.venv\Scripts\python.exe -m nuitka^
     --standalone^
+    --show-progress^
     --nofollow-import-to=onnx^
     --follow-import-to=doctr^
     --enable-plugin=pylint-warnings^
