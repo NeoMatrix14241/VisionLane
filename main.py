@@ -156,15 +156,22 @@ def load_modules_progressively(app):
         
         current_step += 1
         # 2.5. Load hardware monitoring patches for Nuitka compatibility
-        update_status("Loading hardware monitoring patches...", modules_to_load[current_step-1][1])
+        update_status("Loading hardware monitoring patches...", modules_to_load[current_step][1])
         try:
-            from core import hardware_monitoring_patch
-            update_status("✓ Hardware monitoring patches loaded successfully", modules_to_load[current_step-1][1])
-            time.sleep(0.1)
+            from core.hardware_monitoring_patch import apply_hardware_monitoring_patches
+            hardware_patch = apply_hardware_monitoring_patches()
+            # Use print if logger not available yet
+            if 'logger' in locals():
+                logger.info(f"Hardware monitoring patch status: {hardware_patch.get_patch_status()}")
+            else:
+                print(f"Hardware monitoring patch status: {hardware_patch.get_patch_status()}")
         except ImportError as e:
-            update_status("⚠ Hardware monitoring patches not found", modules_to_load[current_step-1][1])
-            print(f"Hardware monitoring patch import error: {e}")
-            time.sleep(0.1)
+            if 'logger' in locals():
+                logger.warning(f"Hardware monitoring patch not available: {e}")
+            else:
+                print(f"Hardware monitoring patch not available: {e}")
+        
+        current_step += 1
         # 3. Load doctr_patch NEXT to ensure proper mocking
         update_status("Loading DocTR patch system...", modules_to_load[current_step][1])
         doctr_patch = None
@@ -317,19 +324,22 @@ def launch_main_application(app, startup_config=None, logger=None):
                         try:
                             child.terminate()
                             child.wait(timeout=2)
-                        except (psutil.TimeoutExpired, psutil.NoSuchProcess):
+                        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
                             try:
                                 child.kill()
                             except psutil.NoSuchProcess:
                                 pass
-                        except Exception:
-                            pass
+                    app._cleanup_done = True
                     if logger:
                         logger.info("Application cleanup completed")
                 except Exception as e:
-                    print(f"Error during cleanup: {e}")
+                    if logger:
+                        logger.error(f"Error during cleanup: {e}")
                 finally:
                     app._cleanup_done = True
+                    # Force exit if needed
+                    import sys
+                    sys.exit(0)
         app.aboutToQuit.connect(cleanup_on_exit)
         update_status("Launching application...", 100)
         # Show main window

@@ -1,6 +1,6 @@
 # demo_enhanced_startup.py
 """
-Demo script showcasing the enhanced startup system with all 5 features
+Demo script showcasing the enhanced startup system with all 6 features
 """
 
 import sys
@@ -302,6 +302,50 @@ def demo_startup_enhancements():
     print("✓ Performance monitoring completed")
     print()
 
+    # Feature 11: Hardware Monitoring Patch System
+    print("11. HARDWARE MONITORING PATCH SYSTEM")
+    print("-" * 40)
+
+    try:
+        from core.hardware_monitoring_patch import (
+            apply_hardware_monitoring_patches,
+            get_safe_gpu_info,
+            get_safe_system_info,
+            get_hardware_patch
+        )
+
+        print("⚙️  Applying hardware monitoring patches...")
+        patch = apply_hardware_monitoring_patches()
+
+        print(f"📊 Patch Status: {patch.get_patch_status()}")
+
+        print("\n🖥️  Safe GPU Information:")
+        gpu_info = get_safe_gpu_info()
+        if gpu_info:
+            for i, gpu in enumerate(gpu_info):
+                print(f"  GPU {i}: {gpu['name']} (Source: {gpu['source']})")
+                print(f"    Memory: {gpu['memory_total']}")
+                print(f"    Compute: {gpu['compute_capability']}")
+        else:
+            print("  No GPU information available")
+
+        print("\n💾 Safe System Information:")
+        sys_info = get_safe_system_info()
+        print(f"  CPU Cores: {sys_info['cpu_count']}")
+        print(f"  CPU Usage: {sys_info['cpu_percent']:.1f}%")
+        print(f"  Memory: {sys_info['memory_total'] / (1024**3):.1f} GB total")
+        print(f"  Memory Usage: {sys_info['memory_percent']:.1f}%")
+        print(f"  Disk Usage: {sys_info['disk_percent']:.1f}%")
+
+        print("\n✅ Hardware monitoring patch demo completed successfully!")
+
+    except Exception as e:
+        print(f"❌ Hardware monitoring patch demo failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+    print()
+
     print("=== DEMO COMPLETED ===")
     print("All enhanced startup features tested successfully!")
     print()
@@ -316,6 +360,7 @@ def demo_startup_enhancements():
     print("✓ 8. DocTR integration and patch validation")
     print("✓ 9. Error handling and recovery systems")
     print("✓ 10. Performance monitoring and profiling")
+    print("✓ 11. Hardware monitoring patch application and validation")
 
 class EnhancedStartupDemo(QMainWindow):
     """GUI demo of the enhanced startup system"""
@@ -344,6 +389,7 @@ class EnhancedStartupDemo(QMainWindow):
         self.create_gpu_compatibility_demo(layout)
         self.create_nuitka_testing_demo(layout)
         self.create_doctr_integration_demo(layout)
+        self.create_hardware_monitoring_demo(layout)
 
         # Output area
         self.output = QTextEdit()
@@ -505,6 +551,17 @@ class EnhancedStartupDemo(QMainWindow):
         doctr_layout.addWidget(predictor_btn)
 
         group_layout.addLayout(doctr_layout)
+        layout.addWidget(group)
+
+    def create_hardware_monitoring_demo(self, layout):
+        """Create hardware monitoring demo section"""
+        group = QGroupBox("8. Hardware Monitoring Patch System")
+        group_layout = QVBoxLayout(group)
+
+        hardware_btn = QPushButton("Test Hardware Monitoring Patch")
+        hardware_btn.clicked.connect(self.demo_hardware_monitoring)
+        group_layout.addWidget(hardware_btn)
+
         layout.addWidget(group)
 
     def log(self, message):
@@ -745,6 +802,48 @@ class EnhancedStartupDemo(QMainWindow):
         except Exception as e:
             self.log(f"⚠ OCR predictor test: {e}")
 
+    def demo_hardware_monitoring(self):
+        """Demo hardware monitoring patch"""
+        self.log("Testing hardware monitoring patch system...")
+
+        try:
+            from core.hardware_monitoring_patch import (
+                apply_hardware_monitoring_patches,
+                get_safe_gpu_info,
+                get_safe_system_info,
+                get_hardware_patch
+            )
+
+            self.log("⚙️  Applying hardware monitoring patches...")
+            patch = apply_hardware_monitoring_patches()
+
+            self.log(f"📊 Patch Status: {patch.get_patch_status()}")
+
+            self.log("\n🖥️  Safe GPU Information:")
+            gpu_info = get_safe_gpu_info()
+            if gpu_info:
+                for i, gpu in enumerate(gpu_info):
+                    self.log(f"  GPU {i}: {gpu['name']} (Source: {gpu['source']})")
+                    self.log(f"    Memory: {gpu['memory_total']}")
+                    self.log(f"    Compute: {gpu['compute_capability']}")
+            else:
+                self.log("  No GPU information available")
+
+            self.log("\n💾 Safe System Information:")
+            sys_info = get_safe_system_info()
+            self.log(f"  CPU Cores: {sys_info['cpu_count']}")
+            self.log(f"  CPU Usage: {sys_info['cpu_percent']:.1f}%")
+            self.log(f"  Memory: {sys_info['memory_total'] / (1024**3):.1f} GB total")
+            self.log(f"  Memory Usage: {sys_info['memory_percent']:.1f}%")
+            self.log(f"  Disk Usage: {sys_info['disk_percent']:.1f}%")
+
+            self.log("✅ Hardware monitoring patch demo completed successfully!")
+
+        except Exception as e:
+            self.log(f"❌ Hardware monitoring patch demo failed: {e}")
+            import traceback
+            traceback.print_exc()
+
     def run_all_demos(self):
         """Run all demos sequentially with enhanced features"""
         self.log("=== RUNNING ALL ENHANCED DEMOS ===")
@@ -760,12 +859,13 @@ class EnhancedStartupDemo(QMainWindow):
             (1500, self.demo_runtime_patches),
             (1700, self.demo_doctr_patches),
             (1900, self.demo_ocr_predictor),
+            (2100, self.demo_hardware_monitoring),
         ]
 
         for delay, demo_func in demos:
             QTimer.singleShot(delay, demo_func)
 
-        QTimer.singleShot(2100, lambda: self.log("=== ALL ENHANCED DEMOS COMPLETED ==="))
+        QTimer.singleShot(2300, lambda: self.log("=== ALL ENHANCED DEMOS COMPLETED ==="))
 
 if __name__ == "__main__":
     print("Choose demo mode:")
