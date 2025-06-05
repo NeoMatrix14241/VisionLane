@@ -330,7 +330,7 @@ if exist "%~dp0cache_binaries.zip" (
     
     REM Method 1: Try PowerShell expansion
     echo Attempting PowerShell extraction...
-    powershell -Command "try { Expand-Archive -Path '%~dp0cache_binaries.zip' -DestinationPath '!TEMP_BINARY_DIR!' -Force; Write-Host 'PowerShell extraction successful' } catch { Write-Host 'PowerShell extraction failed:' $_.Exception.Message; exit 1 }"
+    powershell -ExecutionPolicy Bypass -Command "Import-Module Microsoft.PowerShell.Archive -Force; try { Expand-Archive -Path '%~dp0cache_binaries.zip' -DestinationPath '!TEMP_BINARY_DIR!' -Force; Write-Host 'PowerShell extraction successful' } catch { Write-Host 'PowerShell extraction failed:' $_.Exception.Message; exit 1 }"
     
     if !ERRORLEVEL! NEQ 0 (
         echo PowerShell extraction failed, trying alternative method...
