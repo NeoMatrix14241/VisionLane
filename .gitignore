@@ -26,6 +26,7 @@ temp_binaries/
 
 # Logs
 *.log
+nuitka-crash-report.xml
 
 # Local development settings
 .env
